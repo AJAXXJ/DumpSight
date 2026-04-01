@@ -51,11 +51,10 @@ def run_daemon(config):
     """
     threads = [
         threading.Thread(target=monitor_core, args=(config,), name="monitor", daemon=True),
-        # 以后加新任务直接往这里加
     ]
 
     for t in threads:
         t.start()
 
     for t in threads:
-        t.join()  # 主线程阻塞，等待所有子线程
+        t.join()

@@ -1,6 +1,7 @@
 from inotify_simple import INotify, flags
 
 from monitor.monitor_utils import set_pid_status
+from tools.logger import logger
 
 
 def monitor_core(config):
@@ -22,10 +23,10 @@ def monitor_core(config):
                     continue
 
                 # exe pid
-                pid = filename.split(".")[2]
+                pid = filename.split(".")[1]
                 # set the status of the pid to "crashed"
                 set_pid_status(config.monitor_file, pid, "crashed")
-
+                logger.info(f"Core dump detected: {filename}, PID: {pid}")
                 # TODO 接入分析模块
     finally:
         inotify.rm_watch(wd)

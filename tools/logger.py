@@ -30,4 +30,4 @@ def setup_logger(log_file=None, level=logging.INFO):
 
     return logger
 
-logger = setup_logger("../DumpSight_running.log", logging.DEBUG)
+logger = setup_logger("DumpSight_running.log", logging.DEBUG)

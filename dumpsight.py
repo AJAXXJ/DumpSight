@@ -83,12 +83,11 @@ def monitor(dpdk_running_args, log):
     Monitor DPDK apps.
     """
     cmd = list(dpdk_running_args)
-    print(cmd)
     # Run the DPDK app and redirect output to the specified log file
     try:
         cmd_str = " ".join(cmd)
         log = os.path.join(config.logs_dir, log)
-        subprocess.run(f"{cmd_str} > {log} 2>&1", shell=True, check=True)
+        process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
         click.echo(f"DPDK running command executed successfully. ELA log is redirected to {log}")
     except subprocess.CalledProcessError as e:
         click.echo(f"Error running dpdk app: {e}", err=True)
@@ -96,8 +95,7 @@ def monitor(dpdk_running_args, log):
     # exe path
     dpdk_app_path = cmd[0]
     # exe pid
-    pid = subprocess.check_output(f"pgrep -f '{dpdk_app_path}'", shell=True).decode().strip()
-    
+    pid = process.pid + 1
 
     monitor_info = {
         "exe_path": dpdk_app_path,
