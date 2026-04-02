@@ -3,7 +3,7 @@ import click
 import subprocess
 import threading
 
-from tools.events import monitor_core
+from tools.events import clean_crashed_core, monitor_core
 
 SERVICE_PATH = "/etc/systemd/system/dumpsight.service"
 
@@ -51,6 +51,7 @@ def run_daemon(config):
     """
     threads = [
         threading.Thread(target=monitor_core, args=(config,), name="monitor", daemon=True),
+        threading.Thread(target=clean_crashed_core, args=(config,), name="clean", daemon=True),
     ]
 
     for t in threads:

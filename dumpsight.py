@@ -1,9 +1,11 @@
 import os
 import click
+import resource
 import subprocess
+from pathlib import Path
 from config import DumpSightConfig
 from monitor.monitor_utils import add_monitor_info
-from tools.daemon_utils import install_systemd_service, run_daemon, systemctl
+from tools.daemon import install_systemd_service, run_daemon, systemctl
 from tools.utils import UniqueIDGenerator, check_root
 
 config = DumpSightConfig()
@@ -14,14 +16,11 @@ def cli():
     """DumpSight CLI Tool"""
     pass
 
-@click.command()
-def setup():
-    """
-    Setup DumpSight environment.
-    """
-    check_root()
-    pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
 
+def _configure_core_pattern(pattern):
+    """
+    Configure the core pattern for core dumps.
+    """
     # tee
     try:
         subprocess.run(
@@ -43,11 +42,19 @@ def setup():
         return
     except Exception as e:
         click.echo(f"Failed to configure core_pattern by sysctl: {e}", err=True)
+
+@click.command()
+def setup():
+    """
+    Setup DumpSight environment.
+    """
+    check_root()
+    # configure core pattern
+    pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
+    _configure_core_pattern(pattern)
  
     # configure daemon systemd service
     install_systemd_service()
-
-
 
 @click.command()
 def status():
@@ -69,6 +76,8 @@ def status():
         click.echo(f"DumpSight daemon status: {status}")
     except subprocess.CalledProcessError as e:
         click.echo(f"DumpSight daemon is not active: {e}", err=True)
+        click.echo("You can setup using 'dumpsight setup' command.")
+
 
     
 
@@ -83,17 +92,23 @@ def monitor(dpdk_running_args, log):
     Monitor DPDK apps.
     """
     cmd = list(dpdk_running_args)
+    def set_core_dump():
+        resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
     # Run the DPDK app and redirect output to the specified log file
     try:
         cmd_str = " ".join(cmd)
         log = os.path.join(config.logs_dir, log)
+
         process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
+
         click.echo(f"DPDK running command executed successfully. ELA log is redirected to {log}")
     except subprocess.CalledProcessError as e:
         click.echo(f"Error running dpdk app: {e}", err=True)
 
     # exe path
-    dpdk_app_path = cmd[0]
+    dpdk_app_path =  cmd[0]
+    if not Path(dpdk_app_path).is_absolute():
+        dpdk_app_path = str(Path(dpdk_app_path).resolve())
     # exe pid
     pid = process.pid + 1
 
@@ -108,21 +123,31 @@ def monitor(dpdk_running_args, log):
 
 
 @cli.command()
-@click.pass_context
-def daemon(ctx):
-    config = ctx.obj
+def daemon():
+    """
+    Run DumpSight monitor in daemon mode.
+    """
     run_daemon(config)
 
 @cli.command()
 def daemon_start():
+    """
+    Start the DumpSight daemon.
+    """
     systemctl("start")
 
 @cli.command()
 def daemon_stop():
+    """
+    Stop the DumpSight daemon.
+    """
     systemctl("stop")
 
 @cli.command()
 def daemon_restart():
+    """
+    Restart the DumpSight daemon.
+    """
     systemctl("restart")
 
 
