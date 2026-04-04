@@ -2,9 +2,10 @@ import functools
 import time
 import schedule
 from inotify_simple import INotify, flags
+from monitor.live_monitor import check_devbind_on_anomaly
 from monitor.monitor_utils import clean_status_info, parse_core_filename, set_pid_status
 from tools.logger import logger
-
+from monitor.request import client_heartbeat, core_analyse
 
 def monitor_core(config):
     """
@@ -46,14 +47,32 @@ def monitor_core(config):
                     logger.warning(f"Executable path mismatch for PID {pid}")
                     continue
 
+                # device binding status
+                alter = check_devbind_on_anomaly()
+
                 # TODO 接入分析模块
                 logger.info(f"Processing core dump for PID {pid}: {exe_path}: {core_path}: {log_path}")
+                
+
+                
+                preprocess_data = {
+                    "pid": pid,
+                    "exe_name": monitor_info["exe_name"],
+                    "exe_path": exe_path,
+                    "file_prefix": monitor_info["file_prefix"],
+                    "instance": monitor_info["instance"],
+
+                    "alter": alter, # DPDK 设备绑定一致性检查
+                }
+                # send core dump pre-processing data
+                core_analyse(config, preprocess_data)
+                    
+
     finally:
         inotify.rm_watch(wd)
 
 
 def clean_crashed_core(config):
-
     """
     Clean up core dump files for processes that have been marked as "crashed" in the monitor file.
     """
@@ -65,3 +84,16 @@ def clean_crashed_core(config):
         schedule.run_pending()
         time.sleep(1)
 
+def send_client_heartbeat(config, dpdk_monitor=None):
+    """
+    Send heartbeat requests to the server at regular intervals to indicate that the client is alive.
+    """
+    def _heartbeat_with_flush():
+        batch = dpdk_monitor.flush() if dpdk_monitor is not None else []
+        client_heartbeat(config, batch=batch)
+    
+    schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush) 
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)

@@ -23,6 +23,13 @@ def read_monitor_list(monitor_file):
 
     return monitor_list
 
+def read_monitor_list_by_status(monitor_file, status):
+    """
+    Read the monitor list from the monitor file filtered by status.
+    """
+    monitor_list = read_monitor_list(monitor_file)
+    return [(pid, info) for pid, info in monitor_list if info.get("status") == status]
+
 
 def add_monitor_info(monitor_file, pid, info):
     """
@@ -78,7 +85,7 @@ def set_pid_status(monitor_file, pid, status):
     return info
         
 
-def clean_status_info(config, status, ):
+def clean_status_info(config, status):
     """
     Clean the information for all PIDs with a specific status from the monitor file.
     """
@@ -136,4 +143,3 @@ def parse_core_filename(filename):
         "exe_path": exe_path,
         "exe_exists": os.path.exists(exe_path)
     }
-    

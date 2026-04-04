@@ -1,0 +1,11 @@
+schedule_heartbeat_interval: 10
+schedule_clean_crashed_core_interval: 600
+monitor_file: "monitor-dpdk.json"
+tmp_dir: "tmp"
+logs_dir: "tmp/logs"
+core_dump_dir: "tmp/core_dumps"
+
+# redis
+REDIS_HOST: "localhost"
+REDIS_PORT: 6379
+REDIS_DB: 0

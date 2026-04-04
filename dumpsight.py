@@ -4,12 +4,15 @@ import resource
 import subprocess
 from pathlib import Path
 from config import DumpSightConfig
+import monitor.dpdk_tools.dpdk_telemetry as tel
 from monitor.monitor_utils import add_monitor_info
+from monitor.request import client_register, client_status
 from tools.daemon import install_systemd_service, run_daemon, systemctl
 from tools.utils import UniqueIDGenerator, check_root
 
 config = DumpSightConfig()
 id_generator = UniqueIDGenerator()
+
 
 @click.group()
 def cli():
@@ -25,7 +28,9 @@ def _configure_core_pattern(pattern):
     try:
         subprocess.run(
             ["tee", "/proc/sys/kernel/core_pattern"],
-            input=pattern, text=True, check=True
+            input=pattern,
+            text=True,
+            check=True,
         )
         click.echo(f"Core pattern configured via tee: {pattern}")
         return
@@ -36,25 +41,42 @@ def _configure_core_pattern(pattern):
     try:
         subprocess.run(
             ["sysctl", "-w", f"kernel.core_pattern={pattern}"],
-            check=True, capture_output=True
+            check=True,
+            capture_output=True,
         )
         click.echo(f"Core pattern configured via sysctl: {pattern}")
         return
     except Exception as e:
         click.echo(f"Failed to configure core_pattern by sysctl: {e}", err=True)
 
+
 @click.command()
-def setup():
+@click.option("--client_id", required=True, help="The client ID for DumpSight. ")
+@click.option("--server_url", required=True, help="The server URL for DumpSight. ")
+def setup(client_id, server_url):
     """
     Setup DumpSight environment.
     """
     check_root()
+
+    # configure global config
+    config.set_config("client_id", client_id)
+    config.set_config("server_url", server_url)
+
+    # register client to server
+    try:
+        client_register(config)
+    except Exception as e:
+        click.echo(f"Client registration failed: {e}", err=True)
+        return
+
     # configure core pattern
     pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
     _configure_core_pattern(pattern)
- 
+
     # configure daemon systemd service
     install_systemd_service()
+
 
 @click.command()
 def status():
@@ -71,51 +93,94 @@ def status():
 
     # daemon status
     try:
-        result = subprocess.run(["systemctl", "is-active", "dumpsight"], check=True, capture_output=True)
+        result = subprocess.run(
+            ["systemctl", "is-active", "dumpsight"], check=True, capture_output=True
+        )
         status = result.stdout.decode().strip()
         click.echo(f"DumpSight daemon status: {status}")
     except subprocess.CalledProcessError as e:
         click.echo(f"DumpSight daemon is not active: {e}", err=True)
         click.echo("You can setup using 'dumpsight setup' command.")
 
+    # config status
+    click.echo("Current DumpSight configuration:")
+    click.echo(f"  Server URL: {config.server_url}")
+    click.echo(f"  Heartbeat Interval: {config.heartbeat_interval}")
+    click.echo(
+        f"  Schedule Clean Crashed Core Interval: {config.schedule_clean_crashed_core_interval}"
+    )
 
+    # client registration status
+    try:
+        client_status(config)
+        click.echo("Client already registered with the server.")
+    except Exception as e:
+        click.echo(f"Client status check failed: {e}", err=True)
     
 
-@click.command(context_settings=dict(
-    ignore_unknown_options=True,
-    allow_extra_args=True,
-))
-@click.argument('dpdk_running_args', nargs=-1)
-@click.option('--log', default=f'dpdk_{id_generator.generate_unique_id()}.log', help="Log file to redirect output.")
-def monitor(dpdk_running_args, log):
+
+@click.command(
+    context_settings=dict(
+        ignore_unknown_options=True,
+        allow_extra_args=True,
+    )
+)
+@click.argument("dpdk_running_args", nargs=-1)
+@click.option(
+    "--file_prefix",
+    default=None,
+    help="The prefix for the dpdk app file.",
+)
+@click.option(
+    "--instance",
+    default=None,
+    help="The instance name for the dpdk app.",
+)
+@click.option(
+    "--log",
+    default=f"dpdk_{id_generator.generate_unique_id()}.log",
+    help="Log file to redirect output.",
+)
+def monitor(dpdk_running_args, file_prefix, instance, log):
     """
     Monitor DPDK apps.
     """
     cmd = list(dpdk_running_args)
-    def set_core_dump():
-        resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+
     # Run the DPDK app and redirect output to the specified log file
     try:
         cmd_str = " ".join(cmd)
         log = os.path.join(config.logs_dir, log)
 
+        if file_prefix:
+            cmd_str = f"{cmd_str} --file-prefix={file_prefix}"
+
+        if instance:
+            cmd_str = f"{cmd_str} --instance={instance}"
+
         process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
 
-        click.echo(f"DPDK running command executed successfully. ELA log is redirected to {log}")
+        click.echo(
+            f"DPDK running command executed successfully. ELA log is redirected to {log}"
+        )
     except subprocess.CalledProcessError as e:
         click.echo(f"Error running dpdk app: {e}", err=True)
 
     # exe path
-    dpdk_app_path =  cmd[0]
+    dpdk_app_path = cmd[0]
     if not Path(dpdk_app_path).is_absolute():
         dpdk_app_path = str(Path(dpdk_app_path).resolve())
+
     # exe pid
     pid = process.pid + 1
 
     monitor_info = {
+        "exe_name": Path(dpdk_app_path).name,
         "exe_path": dpdk_app_path,
+        "file_prefix": file_prefix,
+        "instance": instance,
         "log_path": log,
-        "status": "running"
+        "status": "running",
     }
 
     # Save monitor info to the monitor file
@@ -129,12 +194,14 @@ def daemon():
     """
     run_daemon(config)
 
+
 @cli.command()
 def daemon_start():
     """
     Start the DumpSight daemon.
     """
     systemctl("start")
+
 
 @cli.command()
 def daemon_stop():
@@ -143,12 +210,14 @@ def daemon_stop():
     """
     systemctl("stop")
 
+
 @cli.command()
 def daemon_restart():
     """
     Restart the DumpSight daemon.
     """
     systemctl("restart")
+
 
 
 cli.add_command(setup)
@@ -159,5 +228,5 @@ cli.add_command(daemon_stop)
 cli.add_command(daemon_restart)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()
