@@ -34,13 +34,7 @@ def client_register(config):
         payload = {
             "client_id": config.client_id,
             "client_secret": encrypt(config.secret_key, config.encryption_key),
-            "dpdk_context": collect_dpdk_context(),
-            "redis_info": {
-                "redis_host": config.redis_host,
-                "redis_port": config.redis_port,
-                "redis_db": config.redis_db,
-                "redis_password": encrypt(config.redis_password, config.encryption_key),
-            },
+            "dpdk_context": collect_dpdk_context()
         }
 
         response = requests.post(register_url, json=payload)

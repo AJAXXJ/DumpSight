@@ -1,5 +1,6 @@
 from main import app
 from sqlalchemy import create_engine
+from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 
 Base = declarative_base()
@@ -35,5 +36,17 @@ class MysqlUtil:
         get session
         """
         return self.Session()
+    
+    @contextmanager
+    def session_scope(self):
+        session = self.Session()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 mysql_util = MysqlUtil()

@@ -5,7 +5,7 @@ from dumpsight import config
 
 class RedisUtil:
 
-    def __init__(self, config):
+    def __init__(self):
         try:
             self.redis_client = redis.Redis(
                 host=config.redis_host,
@@ -65,4 +65,4 @@ class RedisUtil:
             logger.error(f"Redis exists error for key {key}: {e}")
             return False
 
-redis_util = RedisUtil(config)
+redis_util = RedisUtil()
