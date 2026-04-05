@@ -3,7 +3,8 @@ import time
 import schedule
 from inotify_simple import INotify, flags
 from monitor.live_monitor import check_devbind_on_anomaly
-from monitor.monitor_utils import clean_status_info, parse_core_filename, set_pid_status
+from monitor.monitor_manager import monitor_manager
+from tools.utils import parse_core_filename
 from tools.logger import logger
 from monitor.request import client_heartbeat, core_analyse
 
@@ -30,7 +31,7 @@ def monitor_core(config):
                 pid = str(parsed_info["pid"])
                 # pid = filename.split(".")[1]
                 # set the status of the pid to "crashed"
-                monitor_info = set_pid_status(config.monitor_file, pid, "crashed")
+                monitor_info = monitor_manager.set_pid_status(pid, "crashed")
 
                 if monitor_info is None:
                     logger.warning(f"PID {pid} not found in {config.monitor_file}. Skipping core dump processing.")
@@ -76,7 +77,7 @@ def clean_crashed_core(config):
     """
     Clean up core dump files for processes that have been marked as "crashed" in the monitor file.
     """
-    clean_status_info_partial = functools.partial(clean_status_info, config, "crashed")
+    clean_status_info_partial = functools.partial(monitor_manager.clean_status_info, "crashed")
     
     schedule.every(config.schedule_clean_crashed_core_interval).seconds.do(clean_status_info_partial) 
 

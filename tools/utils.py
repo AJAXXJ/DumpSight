@@ -4,6 +4,7 @@ import sys
 import time
 import click
 import threading
+from monitor.constant import SIGNAL_MAP
 from tools.logger import logger
 
 def check_root():
@@ -30,6 +31,35 @@ def timer(func):
         logger.info(f"{func.__name__} 分析 {filename} 耗时: {end - start:.6f} 秒")
         return result
     return wrapper
+
+def parse_core_filename(filename):
+    """
+    parse core.<exe>.<pid>.<tid>.<signal>.<timestamp>.<encoded_path>
+    """
+    parts = filename.split(".", 6)
+
+    if len(parts) < 7:
+        logger.warning(f"Invalid core filename: {filename}")
+
+    _, exe_name, pid, tid, signal, ts, encoded_path = parts
+
+
+    exe_path = encoded_path.replace("!", "/")
+
+    if not exe_path.startswith("/"):
+        exe_path = "/" + exe_path
+
+    return {
+        "exe_name": exe_name,
+        "pid": int(pid),
+        "tid": int(tid),
+        "signal": int(signal),
+        "signal_name": SIGNAL_MAP.get(int(signal), "UNKNOWN"),
+        "timestamp": int(ts),
+        "exe_path": exe_path,
+        "exe_exists": os.path.exists(exe_path)
+    }
+
 
 class UniqueIDGenerator:
     """

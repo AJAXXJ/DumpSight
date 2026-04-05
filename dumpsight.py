@@ -1,11 +1,9 @@
 import os
 import click
-import resource
 import subprocess
 from pathlib import Path
 from config import DumpSightConfig
-import monitor.dpdk_tools.dpdk_telemetry as tel
-from monitor.monitor_utils import add_monitor_info
+from monitor.monitor_manager import monitor_manager
 from monitor.request import client_register, client_status
 from tools.daemon import install_systemd_service, run_daemon, systemctl
 from tools.utils import UniqueIDGenerator, check_root
@@ -51,9 +49,38 @@ def _configure_core_pattern(pattern):
 
 
 @click.command()
-@click.option("--client_id", required=True, help="The client ID for DumpSight. ")
-@click.option("--server_url", required=True, help="The server URL for DumpSight. ")
-def setup(client_id, server_url):
+@click.option(
+    "--client_id", prompt="Enter Client ID", help="The client ID for DumpSight. "
+)
+@click.option(
+    "--client_secret", prompt="Enter Client Secret", help="The secret for the client. "
+)
+@click.option(
+    "--server_url", prompt="Enter Server URL", help="The server URL for DumpSight. "
+)
+@click.option(
+    "--redis_host", prompt="Enter Redis Host", help="The server URL for DumpSight. "
+)
+@click.option(
+    "--redis_port", prompt="Enter Redis Port", help="The server URL for DumpSight. "
+)
+@click.option(
+    "--redis_db", prompt="Enter Redis DB Number", help="The server URL for DumpSight. "
+)
+@click.option(
+    "--redis_password",
+    prompt="Enter Redis Password",
+    help="The server URL for DumpSight. ",
+)
+def setup(
+    client_id,
+    client_secret,
+    server_url,
+    redis_host,
+    redis_port,
+    redis_db,
+    redis_password,
+):
     """
     Setup DumpSight environment.
     """
@@ -61,7 +88,14 @@ def setup(client_id, server_url):
 
     # configure global config
     config.set_config("client_id", client_id)
+    config.set_config("client_secret", client_secret)
+
     config.set_config("server_url", server_url)
+
+    config.set_config("redis_host", redis_host)
+    config.set_config("redis_port", redis_port)
+    config.set_config("redis_db", redis_db)
+    config.set_config("redis_password", redis_password)
 
     # register client to server
     try:
@@ -76,6 +110,8 @@ def setup(client_id, server_url):
 
     # configure daemon systemd service
     install_systemd_service()
+
+    click.echo("Client registration successful.")
 
 
 @click.command()
@@ -116,7 +152,6 @@ def status():
         click.echo("Client already registered with the server.")
     except Exception as e:
         click.echo(f"Client status check failed: {e}", err=True)
-    
 
 
 @click.command(
@@ -184,7 +219,7 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     }
 
     # Save monitor info to the monitor file
-    add_monitor_info(config.monitor_file, pid, monitor_info)
+    monitor_manager.add_monitor_info(pid, monitor_info)
 
 
 @cli.command()
@@ -217,7 +252,6 @@ def daemon_restart():
     Restart the DumpSight daemon.
     """
     systemctl("restart")
-
 
 
 cli.add_command(setup)

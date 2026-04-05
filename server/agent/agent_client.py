@@ -12,4 +12,9 @@ class AgentClient:
             base_url=app.config["LLM_BASE_URL"],
         )
 
+
+    def analyse_poll_secends():
+        pass
         
+    def analyse_dump_core():
+        pass

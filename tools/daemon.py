@@ -1,10 +1,9 @@
-import signal
 import sys
 import click
 import subprocess
 import threading
 from monitor.live_monitor import DPDKLiveMonitor
-from monitor.monitor_utils import read_monitor_list, read_monitor_list_by_status
+from monitor.monitor_manager import monitor_manager
 from monitor.request import client_heartbeat
 from tools.events import clean_crashed_core, monitor_core, send_client_heartbeat
 
@@ -50,12 +49,12 @@ def systemctl(action):
     subprocess.run(["systemctl", action, "dumpsight"], check=True)
 
 
-def read_running_instances_info(monitor_file):
+def read_running_instances_info():
     """
     Read information about running DPDK instances from the monitor file.
     """
     instances = []
-    running_apps_info = read_monitor_list_by_status(monitor_file, status="running")
+    running_apps_info = monitor_manager.read_monitor_list_by_status(status="running")
     for pid, info in running_apps_info:
         instances.append({
             "pid": pid,
@@ -73,7 +72,7 @@ def run_daemon(config):
     # Initialize the DPDK monitor with the current running instances
     dpdk_monitor = DPDKLiveMonitor(
         config=config,
-        instances=read_running_instances_info(config.monitor_file),
+        instances=read_running_instances_info(),
     )
     dpdk_monitor.start()
 

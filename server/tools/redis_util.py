@@ -1,5 +1,5 @@
 import redis
-
+from main import app
 
 class RedisUtil:
 

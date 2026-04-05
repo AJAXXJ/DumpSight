@@ -18,9 +18,9 @@ EXC_DIR = get_exe_dir()
 sys.path.append(EXC_DIR)
 
 DEFAULT_CONFIG = {
+    "encryption_key": "XUT",
     "schedule_heartbeat_interval": 10,
     "schedule_clean_crashed_core_interval": 600,
-    "monitor_file": "monitor-dpdk.json",
     "tmp_dir": "tmp",
     "logs_dir": "tmp/logs",
     "core_dump_dir": "tmp/core_dumps",
@@ -40,10 +40,6 @@ class DumpSightConfig:
 
         self.load_config()
 
-        if not os.path.exists(self.monitor_file):
-            with open(self.monitor_file, "w") as f:
-                json.dump([], f)
-
         os.makedirs(self.tmp_dir, exist_ok=True)
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.core_dump_dir, exist_ok=True)
@@ -60,9 +56,6 @@ class DumpSightConfig:
         self.heartbeat_interval = config_data.get("heartbeat_interval", 60)
         self.schedule_clean_crashed_core_interval = config_data.get(
             "schedule_clean_crashed_core_interval", 600
-        )
-        self.monitor_file = os.path.join(
-            EXC_DIR, config_data.get("monitor_file", "monitor-dpdk.json")
         )
         self.tmp_dir = os.path.join(EXC_DIR, config_data.get("tmp_dir", "tmp"))
         self.logs_dir = os.path.join(self.tmp_dir, config_data.get("logs_dir", "logs"))
