@@ -65,6 +65,7 @@ def read_running_instances_info():
         })
     return instances
 
+
 def run_daemon(config):
     """
     Runs the DumpSight monitor in daemon mode.

@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+import time
+from redis import RedisError
 from tools.logger import logger
 from tools.redis_util import redis_util
 from dumpsight import config
@@ -9,22 +11,75 @@ class RedisMonitorManager:
     def __init__(self, config):
         self.config = config
         self.client_id = str(config.client_id)
-        self._ensure_monitor_client()
+        self.info_prefix = f"{self.client_id}:info"
 
-    def _ensure_monitor_client(self):
-        """Ensure the monitor client key exists in Redis."""
-        if not redis_util.exists(self.client_id):
-            redis_util.set(self.client_id, json.dumps({}))
+    def _info_key(self, pid):
+        return f"{self.info_prefix}:{pid}"
+
+
+    def scan(self, pattern):
+        """
+        Scan keys matching a pattern, returns a list of keys.
+        """
+        if not self.redis_client:
+            logger.warning("Redis client not available. scan operation skipped.")
+            return []
+        try:
+            keys = []
+            cursor = 0
+            while True:
+                cursor, partial = self.redis_client.scan(cursor=cursor, match=pattern, count=100)
+                keys.extend(partial)
+                if cursor == 0:
+                    break
+            return keys
+        except RedisError as e:
+            logger.error(f"Redis scan error for pattern {pattern}: {e}")
+            return []
+    
+
+    def scan_with_values(self, pattern):
+        """
+        Scan keys matching a pattern and return key-value pairs in one batch.
+        """
+        if not self.redis_client:
+            return {}
+        try:
+            keys = []
+            cursor = 0
+            while True:
+                cursor, partial = self.redis_client.scan(cursor=cursor, match=pattern, count=100)
+                keys.extend(partial)
+                if cursor == 0:
+                    break
+            if not keys:
+                return {}
+            pipe = self.redis_client.pipeline()
+            for key in keys:
+                pipe.get(key)
+            values = pipe.execute()
+            return dict(zip(keys, values))
+        except RedisError as e:
+            logger.error(f"Redis scan_with_values error for pattern {pattern}: {e}")
+            return {}
+    
 
     def read_monitor_list(self):
-        """Read the full monitor list from Redis (returns a dict)."""
-        monitor_data = redis_util.get(self.client_id)
-        if monitor_data:
+        """
+        Read the full monitor list from Redis (returns a dict of pid -> info).
+        """
+        kv = redis_util.scan_with_values(f"{self.info_prefix}:*")
+        result = {}
+        for key, data in kv.items():
+            if not data:
+                continue
             try:
-                return json.loads(monitor_data)
+                pid = key.split(":")[-1]
+                result[pid] = json.loads(data)
             except json.JSONDecodeError:
-                logger.error("Failed to decode monitor list JSON from Redis")
-        return {}
+                logger.error(f"Failed to decode monitor info JSON for key {key}")
+        return result
+
 
     def read_monitor_list_by_status(self, status):
         """Return list of (pid, info) tuples filtered by status."""
@@ -35,52 +90,58 @@ class RedisMonitorManager:
             if isinstance(info, dict) and info.get("status") == status
         ]
 
+
     def get_pid_info(self, pid):
-        """Get info for a specific PID."""
-        monitor_list = self.read_monitor_list()
-        return monitor_list.get(str(pid))
+        """
+        Get info for a specific PID.
+        """
+        data = redis_util.get(self._info_key(pid))
+        if not data:
+            return None
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode monitor info JSON for PID {pid}")
+            return None
+
 
     def add_monitor_info(self, pid, info):
-        """Add or update monitor information for a PID.
-        If the same PID exists with non-running status, remove it first."""
+        """
+        Add or update monitor information for a PID.
+        If the same PID exists with non-running status, remove it first.
+        """
         pid = str(pid)
-        monitor_list = self.read_monitor_list()
+        existing = self.get_pid_info(pid)
+        if existing and existing.get("status") != "running":
+            redis_util.delete(self._info_key(pid))
 
-        # Remove non-running PID if exists
-        info_existing = monitor_list.get(pid)
-        if info_existing and info_existing.get("status") != "running":
-            monitor_list.pop(pid)
+        redis_util.set(self._info_key(pid), json.dumps(info))
 
-        monitor_list[pid] = info
-        redis_util.set(self.client_id, json.dumps(monitor_list))
-
-    def del_pid_info(self, pid):
-        """Delete monitor information for a PID."""
-        pid = str(pid)
-        monitor_list = self.read_monitor_list()
-        monitor_list.pop(pid, None)
-        redis_util.set(self.client_id, json.dumps(monitor_list))
 
     def set_pid_status(self, pid, status):
-        """Set the status of a specific PID."""
+        """
+        Set the status of a specific PID.
+        """
         pid = str(pid)
-        monitor_list = self.read_monitor_list()
-        info = monitor_list.get(pid)
+        info = self.get_pid_info(pid)
         if not info:
             logger.warning(f"PID {pid} not found in the monitor list.")
             return None
 
         info["status"] = status
-        monitor_list[pid] = info
-        redis_util.set(self.client_id, json.dumps(monitor_list))
+        redis_util.set(self._info_key(pid), json.dumps(info))
         return info
 
-    def clean_status_info(self, status):
-        """Clean all PIDs with a specific status and remove their core/log files."""
-        monitor_list = self.read_monitor_list()
-        to_remove = {pid: info for pid, info in monitor_list.items() if info.get("status") == status}
 
-        for pid, info in to_remove.items():
+    def clean_status_info(self, status):
+        """
+        Clean all PIDs with a specific status and remove their core/log files.
+        """
+        monitor_list = self.read_monitor_list()
+        to_remove = [(pid, info) for pid, info in monitor_list.items() if info.get("status") == status]
+
+        keys_to_delete = []
+        for pid, info in to_remove:
             # Delete core dump files
             core_dir = getattr(self.config, "core_dump_dir", None)
             if core_dir:
@@ -100,10 +161,41 @@ class RedisMonitorManager:
                 except OSError as e:
                     logger.error(f"Failed to delete log file {log_path}: {e}")
 
-            # Remove PID from monitor list
-            monitor_list.pop(pid, None)
+            keys_to_delete.append(self._info_key(pid))
 
-        redis_util.set(self.client_id, json.dumps(monitor_list))
+        # Batch delete all Redis keys at once
+        if keys_to_delete:
+            redis_util.delete_many(keys_to_delete)
+
+
+    def set_preprocess_core_info(self, preprocess_info):
+        """
+        Set preprocess dump core info in redis.
+        """
+        pid = str(preprocess_info.get("pid"))
+        timestamp = int(preprocess_info.get("timestamp", time.time()))
+        ttl = getattr(self.config, "core_info_ttl", None)
+
+        key = f"{self.client_id}:core:{pid}:{timestamp}"
+        redis_util.set(key, json.dumps(preprocess_info), expire=ttl)
+
+
+    def flush_dpdk_batch(self, batch):
+        """
+        Write flushed DPDK batch to Redis.
+        """
+        ttl = getattr(self.config, "dpdk_batch_ttl", None)
+
+        for record in batch:
+            pid = record.get("pid")
+            record_type = record.get("type")
+            timestamp_second = int(record.get("timestamp", time.time()))
+
+            if not pid or record_type not in ("1s", "5s"):
+                continue
+
+            key = f"{self.client_id}:log:{pid}:{record_type}:{timestamp_second}"
+            redis_util.set(key, json.dumps(record), expire=ttl)
 
 
 monitor_manager = RedisMonitorManager(config)

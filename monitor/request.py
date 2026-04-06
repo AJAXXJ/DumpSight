@@ -34,7 +34,7 @@ def client_register(config):
         payload = {
             "client_id": config.client_id,
             "client_secret": encrypt(config.secret_key, config.encryption_key),
-            "dpdk_context": collect_dpdk_context()
+            "dpdk_context": collect_dpdk_context(),
         }
 
         response = requests.post(register_url, json=payload)
@@ -50,7 +50,7 @@ def client_register(config):
         logger.error(f"Error during client registration: {e}")
 
 
-def client_heartbeat(config, batch=None):
+def client_heartbeat(config):
     """
     Send heartbeat requests to the server at regular intervals to indicate that the client is alive.
     """
@@ -61,8 +61,6 @@ def client_heartbeat(config, batch=None):
             "client_id": config.client_id,
             "status": "alive",
         }
-        if batch:
-            payload["dpdk_metrics"] = batch
 
         response = requests.post(heartbeat_url, json=payload)
 
@@ -75,20 +73,25 @@ def client_heartbeat(config, batch=None):
         logger.error(f"Error during heartbeat: {e}")
 
 
-def core_analyse(config, preprocess_data):
+def report_crash(config, pid, timestamp):
+    """
+    Report a client crash event to the server for core analysis.
+    """
     try:
         core_analyse_url = config.server_url + "/api/client/core_analyse"
 
-        payload = {"client_id": config.client_id, "preprocess_data": preprocess_data}
+        payload = {"client_id": config.client_id, "pid": pid, "timestamp": timestamp}
 
-        response = requests.post(core_analyse_url, json=payload)
+        response = requests.post(core_analyse_url, json=payload, timeout=5)
 
         if response.status_code == 200:
-            logger.info("Core analysis sent successfully.")
+            logger.info(
+                f"Crash reported: client={config.client_id}, pid={pid}, timestamp={timestamp}"
+            )
         else:
             logger.error(
                 f"Core analysis failed with status code: {response.status_code}"
             )
-
+        return response.status_code == 200
     except Exception as e:
         logger.error(f"Error during core analysis: {e}")

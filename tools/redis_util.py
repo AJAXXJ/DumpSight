@@ -55,6 +55,16 @@ class RedisUtil:
             logger.error(f"Redis delete error for key {key}: {e}")
             return False
 
+    def delete_many(self, keys):
+        """Delete multiple keys in one batch."""
+        if not self.redis_client or not keys:
+            return False
+        try:
+            return self.redis_client.delete(*keys)
+        except RedisError as e:
+            logger.error(f"Redis delete_many error: {e}")
+            return False
+    
     def exists(self, key):
         if not self.redis_client:
             logger.warning("Redis client not available. exists operation skipped.")

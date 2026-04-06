@@ -18,6 +18,7 @@ EXC_DIR = get_exe_dir()
 sys.path.append(EXC_DIR)
 
 DEFAULT_CONFIG = {
+    "dpdk_batch_ttl": 910,
     "encryption_key": "XUT",
     "schedule_heartbeat_interval": 10,
     "schedule_clean_crashed_core_interval": 600,

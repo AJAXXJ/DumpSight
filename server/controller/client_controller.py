@@ -12,6 +12,7 @@ def client_status():
     else:
         return jsonify({"error": "client_id is required"}), 400
 
+
 @client_bp.route('/register', methods=['POST'])
 def client_register():
     try:
