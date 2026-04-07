@@ -1,5 +1,7 @@
 from flask import Blueprint, app, jsonify, request
 
+from server.service.client_service import client_core_analyse_service
+
 client_bp = Blueprint("client", __name__)
 
 @client_bp.route('/status', methods=['GET'])
@@ -40,9 +42,9 @@ def client_heartbeat():
 def client_core_analyse():
     try:
         crash_info = request.get_json()
-        # TODO
-        
-        return jsonify({"message": "Heartbeat received successfully"}), 200
 
+        client_core_analyse_service(crash_info)
+
+        return jsonify({"message": "Crash report processed successfully"}), 200
     except Exception as e:
-        return jsonify({"error": f"Failed to process heartbeat: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to process crash report: {str(e)}"}), 500

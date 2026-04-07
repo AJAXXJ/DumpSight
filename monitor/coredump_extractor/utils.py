@@ -1,17 +1,6 @@
 import os
-import sys
 import time
 import subprocess
-import click
-
-
-def check_root():
-    """
-    检查是否以 root 权限运行
-    """
-    if os.geteuid() != 0:
-        click.echo("This command must be run as root.", err=True)
-        sys.exit(1)
 
 
 def safe_run(cmd, timeout=5):

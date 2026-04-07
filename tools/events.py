@@ -21,6 +21,8 @@ def monitor_core(config):
     try:
         while True:
             for event in inotify.read():
+                start_time = time.time()
+
                 filename = event.name
                 if (
                     not filename.startswith("core")
@@ -65,9 +67,12 @@ def monitor_core(config):
                 meta = core_extractor_result["meta"]
                 context = core_extractor_result["context"]
 
+                end_time = time.time()
+
                 preprocess_info = {
                     "pid": pid,
-                    "timestamp": timestamp,
+                    "core_timestamp": timestamp,
+                    "process_time": round(end_time - start_time, 4),
                     "exe_name": monitor_info["exe_name"],
                     "exe_path": exe_path,
                     "file_prefix": monitor_info["file_prefix"],
@@ -79,6 +84,7 @@ def monitor_core(config):
 
                 # set core preprocess info in redis
                 get_monitor_manager().set_preprocess_core_info(preprocess_info)
+                
                 # report crash to server
                 # report_crash(config, pid, timestamp)
 
