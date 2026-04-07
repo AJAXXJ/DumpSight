@@ -1,17 +1,29 @@
 import redis
 from tools.logger import logger
 from redis.exceptions import RedisError, ConnectionError
-from dumpsight import config
+from config import config
+import threading
 
 class RedisUtil:
 
     def __init__(self):
         try:
+            # Check if Redis configuration is available
+            redis_host = getattr(config, 'redis_host', None)
+            redis_port = getattr(config, 'redis_port', None)
+            redis_db = getattr(config, 'redis_db', None)
+            redis_password = getattr(config, 'redis_password', None)
+
+            if not redis_host:
+                logger.warning("Redis configuration not found. Please run 'dumpsight setup' first.")
+                self.redis_client = None
+                return
+
             self.redis_client = redis.Redis(
-                host=config.redis_host,
-                port=int(config.redis_port),
-                password=config.redis_password,
-                db=int(config.redis_db),
+                host=redis_host,
+                port=int(redis_port),
+                password=redis_password,
+                db=int(redis_db),
                 decode_responses=True,
                 socket_timeout=5,
                 socket_connect_timeout=5,
@@ -75,4 +87,13 @@ class RedisUtil:
             logger.error(f"Redis exists error for key {key}: {e}")
             return False
 
-redis_util = RedisUtil()
+_redis_util = None
+_lock = threading.Lock()
+
+def get_redis_util() -> RedisUtil:
+    global _redis_util
+    if _redis_util is None:
+        with _lock:
+            if _redis_util is None:
+                _redis_util = RedisUtil()
+    return _redis_util

@@ -1,89 +1,125 @@
 import os
 import sys
-import json
 import yaml
+from dataclasses import dataclass, field
 
 
-def get_exe_dir():
-    """
-    Get the directory of the current executable or script.
-    """
+def get_exe_dir() -> str:
+    """Get the directory of the current executable or script."""
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
-EXC_DIR = get_exe_dir()
-sys.path.append(EXC_DIR)
+EXE_DIR = get_exe_dir()
+sys.path.append(EXE_DIR)
 
-DEFAULT_CONFIG = {
+# Single source of truth for all defaults
+DEFAULT_CONFIG: dict = {
     "dpdk_batch_ttl": 910,
     "encryption_key": "XUT",
     "schedule_heartbeat_interval": 10,
     "schedule_clean_crashed_core_interval": 600,
     "tmp_dir": "tmp",
-    "logs_dir": "tmp/logs",
-    "core_dump_dir": "tmp/core_dumps",
+    "logs_dir": "logs",
+    "core_dump_dir": "core_dumps",
+    "client_id": "",
+    "client_secret": "",
+    "server_url": "",
+    "redis_host": "localhost",
+    "redis_port": 6379,
+    "redis_db": 0,
+    "redis_password": "",
 }
 
 
+@dataclass
 class DumpSightConfig:
-    """
-    Configuration class for DumpSight.
-    """
+    """Configuration for DumpSight, loaded from a YAML file."""
 
-    def __init__(self, config_file="config.yaml"):
-        self.config_file = os.path.join(EXC_DIR, config_file)
+    config_file: str = "config.yaml"
 
+    # Runtime fields (populated after __post_init__)
+    dpdk_batch_ttl: int = field(init=False)
+    encryption_key: str = field(init=False)
+    schedule_heartbeat_interval: int = field(init=False)
+    schedule_clean_crashed_core_interval: int = field(init=False)
+    tmp_dir: str = field(init=False)
+    logs_dir: str = field(init=False)
+    core_dump_dir: str = field(init=False)
+    client_id: str = field(init=False)
+    client_secret: str = field(init=False)
+    server_url: str = field(init=False)
+    redis_host: str = field(init=False)
+    redis_port: int = field(init=False)
+    redis_db: int = field(init=False)
+    redis_password: str = field(init=False)
+
+    def __post_init__(self):
+        self.config_file = os.path.join(EXE_DIR, self.config_file)
         if not os.path.exists(self.config_file):
-            self.create_default_config()
+            self._create_default_config()
+        self._load_config()
+        self._ensure_dirs()
 
-        self.load_config()
-
-        os.makedirs(self.tmp_dir, exist_ok=True)
-        os.makedirs(self.logs_dir, exist_ok=True)
-        os.makedirs(self.core_dump_dir, exist_ok=True)
-
-    def load_config(self):
-        """
-        Loads configuration from the YAML file.
-        """
+    def _load_config(self) -> None:
+        """Load YAML and apply values to instance attributes."""
         with open(self.config_file, "r") as f:
-            config_data = yaml.safe_load(f)
+            self._config_data: dict = yaml.safe_load(f) or {}
 
-        # Assign the loaded config values to the instance attributes
-        self.server_url = config_data.get("server_url", "http://localhost:8000")
-        self.heartbeat_interval = config_data.get("heartbeat_interval", 60)
-        self.schedule_clean_crashed_core_interval = config_data.get(
-            "schedule_clean_crashed_core_interval", 600
-        )
-        self.tmp_dir = os.path.join(EXC_DIR, config_data.get("tmp_dir", "tmp"))
-        self.logs_dir = os.path.join(self.tmp_dir, config_data.get("logs_dir", "logs"))
-        self.core_dump_dir = os.path.join(
-            self.tmp_dir, config_data.get("core_dump_dir", "core_dumps")
-        )
+        data = {**DEFAULT_CONFIG, **self._config_data}  # file overrides defaults
 
-    def create_default_config(self):
-        """
-        Creates a default configuration file if it does not exist.
-        """
+        # Resolve paths
+        tmp = os.path.join(EXE_DIR, data["tmp_dir"])
+        self.tmp_dir = tmp
+        self.logs_dir = os.path.join(tmp, data["logs_dir"])
+        self.core_dump_dir = os.path.join(tmp, data["core_dump_dir"])
+
+        # Remaining scalar fields
+        for key in (
+            "dpdk_batch_ttl",
+            "encryption_key",
+            "schedule_heartbeat_interval",
+            "schedule_clean_crashed_core_interval",
+            "client_id",
+            "client_secret",
+            "server_url",
+            "redis_host",
+            "redis_port",
+            "redis_db",
+            "redis_password",
+        ):
+            setattr(self, key, data[key])
+
+    def _create_default_config(self) -> None:
+        """Write default config YAML if none exists."""
         with open(self.config_file, "w") as f:
             yaml.dump(DEFAULT_CONFIG, f, default_flow_style=False)
-        print(f"{self.config_file} created with default configuration.")
+        print(f"Created default config: {self.config_file}")
 
-    def set_config(self, variable_name, variable_value):
-        """
-        Sets or updates a variable in the config. If the variable exists, it updates the value.
-        If the variable doesn't exist, it creates the variable with the provided value.
-        """
-        self.config_data[variable_name] = variable_value
-        setattr(self, variable_name, variable_value)
-        self.update_config_file()
+    def _ensure_dirs(self) -> None:
+        """Create required runtime directories."""
+        for d in (self.tmp_dir, self.logs_dir, self.core_dump_dir):
+            os.makedirs(d, exist_ok=True)
 
-    def update_config_file(self):
+    def _flush(self) -> None:
+        """Persist current _config_data to disk."""
+        with open(self.config_file, "w") as f:
+            yaml.dump(self._config_data, f, default_flow_style=False)
+
+    def set_config(self, key: str, value) -> None:
         """
-        Writes the current configuration data back to the YAML file.
+        Update a config value both in memory and on disk.
+        Unknown keys are accepted (stored in YAML but not as typed attributes).
         """
-        with open(self.config_file, 'w') as f:
-            yaml.dump(self.config_data, f, default_flow_style=False)
+        self._config_data[key] = value
+        if hasattr(self, key):
+            setattr(self, key, value)
+        self._flush()
+
+    def reload(self) -> None:
+        """Re-read the YAML file (useful if edited externally)."""
+        self._load_config()
+
+
+config = DumpSightConfig()

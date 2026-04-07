@@ -2,10 +2,10 @@ import time
 import json
 import threading
 from collections import deque
-from dpdk_tools.cpu_layout import get_cpu_layout_simple
-from dpdk_tools.dpdk_hugepages import get_hugepage_status
-from dpdk_tools.dpdk_devbind_helper import get_device_status, get_network_devices
-import dpdk_tools.dpdk_telemetry as telemetry
+from monitor.dpdk_tools.cpu_layout import get_cpu_layout_simple
+from monitor.dpdk_tools.dpdk_hugepages import get_hugepage_status
+from monitor.dpdk_tools.dpdk_devbind_helper import get_device_status, get_network_devices
+from monitor.dpdk_tools import dpdk_telemetry as telemetry
 from tools.logger import logger
 
 
@@ -243,15 +243,13 @@ class DPDKLiveMonitor:
             self._buffer.clear()
         return batch
 
-    def _collect_one(self, pid, exe_name, exe_path, file_prefix, instance):
+    def _collect_one(self, pid, file_prefix, instance):
         """
         Collect data for one DPDK instance in a loop until stopped.
         """
         tick = 0
         ident = {
             "pid": pid,
-            "exe_name": exe_name,
-            "exe_path": exe_path,
             "file_prefix": file_prefix,
             "instance": instance,
         }
@@ -310,10 +308,8 @@ class DPDKLiveMonitor:
                 target=self._collect_one,
                 args=(
                     instance.get("pid"),
-                    instance.get("exe_name"),
-                    instance.get("exe_path"),
                     instance.get("file_prefix"),
-                    instance.get("instance"),
+                    instance.get("instance")
                 ),
                 name=f"dpdk-{instance.get("exe_name")}-{instance.get('file_prefix')}-{instance.get('instance')}",
                 daemon=True,

@@ -78,7 +78,7 @@ def report_crash(config, pid, timestamp):
     Report a client crash event to the server for core analysis.
     """
     try:
-        core_analyse_url = config.server_url + "/api/client/core_analyse"
+        core_analyse_url = config.server_url + "/api/client/report_crash"
 
         payload = {"client_id": config.client_id, "pid": pid, "timestamp": timestamp}
 

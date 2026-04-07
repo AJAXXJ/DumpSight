@@ -4,7 +4,7 @@ import sys
 import time
 import click
 import threading
-from monitor.constant import SIGNAL_MAP
+from tools.constant import SIGNAL_MAP
 from tools.logger import logger
 
 def check_root():
@@ -75,3 +75,5 @@ class UniqueIDGenerator:
             timestamp = int(time.time() * 1000)
             self.sequence += 1
             return f"{timestamp}{self.sequence}"
+        
+id_generator = UniqueIDGenerator()

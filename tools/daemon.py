@@ -3,7 +3,7 @@ import click
 import subprocess
 import threading
 from monitor.live_monitor import DPDKLiveMonitor
-from monitor.monitor_manager import monitor_manager
+from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_heartbeat
 from tools.events import clean_crashed_core, monitor_core, send_client_heartbeat
 
@@ -27,13 +27,14 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 """
 
+
 def install_systemd_service():
     """
     Installs the DumpSight systemd service to run the monitor in the background.
     """
     exec_start = f"{sys.executable} daemon"
-    
-    with open(SERVICE_PATH, 'w') as f:
+
+    with open(SERVICE_PATH, "w") as f:
         f.write(SERVICE_CONTENT.format(exec_start=exec_start))
     click.echo(f"Service file written to {SERVICE_PATH}")
 
@@ -41,6 +42,7 @@ def install_systemd_service():
     subprocess.run(["systemctl", "enable", "dumpsight"], check=True)
     subprocess.run(["systemctl", "start", "dumpsight"], check=True)
     click.echo("DumpSight service enabled and started.")
+
 
 def systemctl(action):
     """
@@ -54,15 +56,19 @@ def read_running_instances_info():
     Read information about running DPDK instances from the monitor file.
     """
     instances = []
-    running_apps_info = monitor_manager.read_monitor_list_by_status(status="running")
+    running_apps_info = get_monitor_manager().read_monitor_list_by_status(status="running")
     for pid, info in running_apps_info:
-        instances.append({
-            "pid": pid,
-            "exe_name": info.get("exe_name"),
-            "exe_path": info.get("exe_path"),
-            "file_prefix": info.get("file_prefix"),
-            "instance": info.get("instance"),
-        })
+        instances.append(
+            {
+                "pid": pid,
+                "start_time": info.get("start_time"),
+                "exe_name": info.get("exe_name"),
+                "exe_path": info.get("exe_path"),
+                "file_prefix": info.get("file_prefix"),
+                "instance": info.get("instance"),
+                "log_path": info.get("log_path"),
+            }
+        )
     return instances
 
 
@@ -78,14 +84,23 @@ def run_daemon(config):
     dpdk_monitor.start()
 
     threads = [
-        threading.Thread(target=monitor_core, args=(config,), name="monitor", daemon=True),
-        threading.Thread(target=clean_crashed_core, args=(config,), name="clean", daemon=True),
-        threading.Thread(target=send_client_heartbeat, args=(config, dpdk_monitor), name="heartbeat", daemon=True),
+        threading.Thread(
+            target=monitor_core, args=(config,), name="monitor", daemon=True
+        ),
+        threading.Thread(
+            target=clean_crashed_core, args=(config,), name="clean", daemon=True
+        ),
+        threading.Thread(
+            target=send_client_heartbeat,
+            args=(config, dpdk_monitor),
+            name="heartbeat",
+            daemon=True,
+        ),
     ]
 
     for t in threads:
         t.start()
-    
+
     for t in threads:
         t.join()
 

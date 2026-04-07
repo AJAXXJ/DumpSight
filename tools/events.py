@@ -4,7 +4,7 @@ from datetime import datetime
 import schedule
 from inotify_simple import INotify, flags
 from monitor.live_monitor import check_devbind_on_anomaly
-from monitor.monitor_manager import monitor_manager
+from monitor.monitor_manager import get_monitor_manager
 from tools.utils import parse_core_filename
 from tools.logger import logger
 from monitor.request import client_heartbeat, report_crash
@@ -33,7 +33,7 @@ def monitor_core(config):
                 pid = str(parsed_info["pid"])
 
                 # set the status of the pid to "crashed"
-                monitor_info = monitor_manager.set_pid_status(pid, "crashed")
+                monitor_info = get_monitor_manager().set_pid_status(pid, "crashed")
 
                 if monitor_info is None:
                     logger.warning(
@@ -73,9 +73,9 @@ def monitor_core(config):
                 }
 
                 # set core preprocess info in redis
-                monitor_manager.set_preprocess_core_info(preprocess_info)
+                get_monitor_manager().set_preprocess_core_info(preprocess_info)
                 # report crash to server
-                report_crash(config, pid, timestamp)
+                # report_crash(config, pid, timestamp)
 
 
     finally:
@@ -87,7 +87,7 @@ def clean_crashed_core(config):
     Clean up core dump files for processes that have been marked as "crashed" in the monitor file.
     """
     clean_status_info_partial = functools.partial(
-        monitor_manager.clean_status_info, "crashed"
+        get_monitor_manager().clean_status_info, "crashed"
     )
 
     schedule.every(config.schedule_clean_crashed_core_interval).seconds.do(
@@ -107,8 +107,8 @@ def send_client_heartbeat(config, dpdk_monitor=None):
     def _heartbeat_with_flush():
         batch = dpdk_monitor.flush() if dpdk_monitor is not None else []
         if batch:
-            monitor_manager.flush_dpdk_batch(batch)
-        client_heartbeat(config)
+            get_monitor_manager().flush_dpdk_batch(batch)
+        # client_heartbeat(config)
 
     schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush)
 

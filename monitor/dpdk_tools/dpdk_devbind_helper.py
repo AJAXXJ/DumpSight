@@ -1,4 +1,4 @@
-import dpdk_devbind as db
+from monitor.dpdk_tools import dpdk_devbind as db
 
 
 def _load_devices():

@@ -1,15 +1,14 @@
 import os
+import time
 import click
+import psutil
 import subprocess
 from pathlib import Path
-from config import DumpSightConfig
-from monitor.monitor_manager import monitor_manager
+from config import config
+from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_register, client_status
 from tools.daemon import install_systemd_service, run_daemon, systemctl
-from tools.utils import UniqueIDGenerator, check_root
-
-config = DumpSightConfig()
-id_generator = UniqueIDGenerator()
+from tools.utils import check_root, id_generator
 
 
 @click.group()
@@ -59,18 +58,20 @@ def _configure_core_pattern(pattern):
     "--server_url", prompt="Enter Server URL", help="The server URL for DumpSight. "
 )
 @click.option(
-    "--redis_host", prompt="Enter Redis Host", help="The server URL for DumpSight. "
+    "--redis_host", prompt="Enter Redis Host", help="The Redis Host for DumpSight. "
 )
 @click.option(
-    "--redis_port", prompt="Enter Redis Port", help="The server URL for DumpSight. "
+    "--redis_port", prompt="Enter Redis Port", help="The Redis Port for DumpSight. "
 )
 @click.option(
-    "--redis_db", prompt="Enter Redis DB Number", help="The server URL for DumpSight. "
+    "--redis_db",
+    prompt="Enter Redis DB Number",
+    help="The Redis DB Number for DumpSight. ",
 )
 @click.option(
     "--redis_password",
     prompt="Enter Redis Password",
-    help="The server URL for DumpSight. ",
+    help="The Redis Password for DumpSight. ",
 )
 def setup(
     client_id,
@@ -98,11 +99,11 @@ def setup(
     config.set_config("redis_password", redis_password)
 
     # register client to server
-    try:
-        client_register(config)
-    except Exception as e:
-        click.echo(f"Client registration failed: {e}", err=True)
-        return
+    # try:
+    #     client_register(config)
+    # except Exception as e:
+    #     click.echo(f"Client registration failed: {e}", err=True)
+    #     return
 
     # configure core pattern
     pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
@@ -119,6 +120,10 @@ def status():
     """
     Check the status of DumpSight.
     """
+    if getattr(config, "server_url", None) is None:
+        click.echo("DumpSight is not setup yet.")
+        return
+    
     # core_pattern status
     try:
         with open("/proc/sys/kernel/core_pattern") as f:
@@ -132,26 +137,21 @@ def status():
         result = subprocess.run(
             ["systemctl", "is-active", "dumpsight"], check=True, capture_output=True
         )
-        status = result.stdout.decode().strip()
-        click.echo(f"DumpSight daemon status: {status}")
+        daemon_status = result.stdout.decode().strip()
+        click.echo(f"DumpSight daemon status: {daemon_status}")
     except subprocess.CalledProcessError as e:
         click.echo(f"DumpSight daemon is not active: {e}", err=True)
         click.echo("You can setup using 'dumpsight setup' command.")
 
     # config status
     click.echo("Current DumpSight configuration:")
-    click.echo(f"  Server URL: {config.server_url}")
-    click.echo(f"  Heartbeat Interval: {config.heartbeat_interval}")
-    click.echo(
-        f"  Schedule Clean Crashed Core Interval: {config.schedule_clean_crashed_core_interval}"
-    )
 
     # client registration status
-    try:
-        client_status(config)
-        click.echo("Client already registered with the server.")
-    except Exception as e:
-        click.echo(f"Client status check failed: {e}", err=True)
+    # try:
+    #     client_status(config)
+    #     click.echo("Client already registered with the server.")
+    # except Exception as e:
+    #     click.echo(f"Client status check failed: {e}", err=True)
 
 
 @click.command(
@@ -173,7 +173,7 @@ def status():
 )
 @click.option(
     "--log",
-    default=f"dpdk_{id_generator.generate_unique_id()}.log",
+    default=None,
     help="Log file to redirect output.",
 )
 def monitor(dpdk_running_args, file_prefix, instance, log):
@@ -185,6 +185,8 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     # Run the DPDK app and redirect output to the specified log file
     try:
         cmd_str = " ".join(cmd)
+        if log is None:
+            log = f"dpdk_{id_generator.generate_unique_id()}.log"
         log = os.path.join(config.logs_dir, log)
 
         if file_prefix:
@@ -192,14 +194,15 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
 
         if instance:
             cmd_str = f"{cmd_str} --instance={instance}"
-
+        
         process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
 
         click.echo(
             f"DPDK running command executed successfully. ELA log is redirected to {log}"
         )
-    except subprocess.CalledProcessError as e:
+    except (OSError, FileNotFoundError) as e:
         click.echo(f"Error running dpdk app: {e}", err=True)
+        return
 
     # exe path
     dpdk_app_path = cmd[0]
@@ -207,22 +210,25 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
         dpdk_app_path = str(Path(dpdk_app_path).resolve())
 
     # exe pid
-    pid = process.pid + 1
+    children = psutil.Process(process.pid).children(recursive=True)
+    pid = children[0].pid if children else process.pid
 
     monitor_info = {
+        "cmd": cmd_str,
         "exe_name": Path(dpdk_app_path).name,
         "exe_path": dpdk_app_path,
         "file_prefix": file_prefix,
         "instance": instance,
         "log_path": log,
         "status": "running",
+        "start_time": time.time(),
     }
 
     # Save monitor info to the monitor file
-    monitor_manager.add_monitor_info(pid, monitor_info)
+    get_monitor_manager().add_monitor_info(pid, monitor_info)
 
 
-@cli.command()
+@click.command()
 def daemon():
     """
     Run DumpSight monitor in daemon mode.
@@ -230,7 +236,7 @@ def daemon():
     run_daemon(config)
 
 
-@cli.command()
+@click.command()
 def daemon_start():
     """
     Start the DumpSight daemon.
@@ -238,7 +244,7 @@ def daemon_start():
     systemctl("start")
 
 
-@cli.command()
+@click.command()
 def daemon_stop():
     """
     Stop the DumpSight daemon.
@@ -246,7 +252,7 @@ def daemon_stop():
     systemctl("stop")
 
 
-@cli.command()
+@click.command()
 def daemon_restart():
     """
     Restart the DumpSight daemon.

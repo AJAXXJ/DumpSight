@@ -1,5 +1,6 @@
 from main import app
 from langchain_openai import ChatOpenAI
+from langchain.agents import initialize_agent, AgentType
 
 
 class AgentClient:
@@ -12,9 +13,20 @@ class AgentClient:
             base_url=app.config["LLM_BASE_URL"],
         )
 
+        tools = []
+
+        self.agent = initialize_agent(
+            tools=tools,
+            llm=self.llm,
+            agent=AgentType.OPENAI_FUNCTIONS,
+            verbose=True,
+        )
 
     def analyse_poll_secends():
         pass
-        
+
     def analyse_dump_core():
         pass
+
+
+agent = AgentClient()

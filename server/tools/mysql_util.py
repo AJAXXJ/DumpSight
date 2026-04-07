@@ -2,6 +2,7 @@ from main import app
 from sqlalchemy import create_engine
 from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+import threading
 
 Base = declarative_base()
 
@@ -49,4 +50,13 @@ class MysqlUtil:
         finally:
             session.close()
 
-mysql_util = MysqlUtil()
+_mysql_util = None
+_mysql_lock = threading.Lock()
+
+def get_mysql_util() -> MysqlUtil:
+    global _mysql_util
+    if _mysql_util is None:
+        with _mysql_lock:
+            if _mysql_util is None:
+                _mysql_util = MysqlUtil()
+    return _mysql_util

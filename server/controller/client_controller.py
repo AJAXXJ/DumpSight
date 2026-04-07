@@ -1,5 +1,4 @@
 from flask import Blueprint, app, jsonify, request
-import yaml
 
 client_bp = Blueprint("client", __name__)
 
@@ -37,6 +36,13 @@ def client_heartbeat():
         return jsonify({"error": f"Failed to process heartbeat: {str(e)}"}), 500
 
 
-@client_bp.route('/core_analyse', methods=['POST'])
+@client_bp.route('/report_crash', methods=['POST'])
 def client_core_analyse():
-    return 'Core analysis received!'
+    try:
+        crash_info = request.get_json()
+        # TODO
+        
+        return jsonify({"message": "Heartbeat received successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to process heartbeat: {str(e)}"}), 500
