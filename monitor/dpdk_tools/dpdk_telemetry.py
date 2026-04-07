@@ -15,6 +15,7 @@ import json
 import errno
 import readline
 import argparse
+from tools.logger import logger
 
 # global vars
 TELEMETRY_VERSION = "v2"
@@ -199,6 +200,33 @@ def query_batch(cmds, file_prefix=None, instance=None):
 
     return results
 
+
+def test_telemetry_connection(file_prefix='rte', instance=0):
+    """
+    Test if telemetry socket is reachable and return handshake info
+    """
+    SOCKET_NAME = "dpdk_telemetry.v2"
+    base_dir = get_dpdk_runtime_dir(file_prefix)
+    sock_path = os.path.join(base_dir, SOCKET_NAME)
+    if instance > 0:
+        sock_path += f":{instance}"
+
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    try:
+        sock.connect(sock_path)
+        logger.info(f"Connected to telemetry socket: {sock_path}")
+
+        handshake = read_socket(sock, 1024, echo=False)
+        logger.info(f"Telemetry handshake: {handshake}")
+        return True
+    except FileNotFoundError:
+        logger.error(f"Socket not found: {sock_path}")
+        return False
+    except ConnectionRefusedError:
+        logger.error(f"Connection refused (telemetry not running): {sock_path}")
+        return False
+    finally:
+        sock.close()
 
 if __name__ == "__main__":    
     readline.parse_and_bind('tab: complete')

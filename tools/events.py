@@ -1,8 +1,9 @@
 import functools
 import time
-from datetime import datetime
+import os
 import schedule
 from inotify_simple import INotify, flags
+from monitor.coredump_extractor.main import run_core_extractor
 from monitor.live_monitor import check_devbind_on_anomaly
 from monitor.monitor_manager import get_monitor_manager
 from tools.utils import parse_core_filename
@@ -37,7 +38,7 @@ def monitor_core(config):
 
                 if monitor_info is None:
                     logger.warning(
-                        f"PID {pid} not found in {config.monitor_file}. Skipping core dump processing."
+                        f"PID {pid} not found in monitor list. Skipping core dump processing."
                     )
                     continue
 
@@ -56,20 +57,24 @@ def monitor_core(config):
                 # device binding status
                 device_binding_status = check_devbind_on_anomaly()
 
-                # TODO 接入分析模块
-                logger.info(
-                    f"Processing core dump for PID {pid}: {exe_path}: {core_path}: {log_path}"
-                )
+                # run core extractor
+                output_dir = os.path.join(config.core_info_dir, f"{monitor_info['exe_name']}_{timestamp}")
+                os.makedirs(output_dir, exist_ok=True)
+                core_extractor_result = run_core_extractor([core_path, exe_path, log_path], output_dir)
+
+                meta = core_extractor_result["meta"]
+                context = core_extractor_result["context"]
 
                 preprocess_info = {
                     "pid": pid,
                     "timestamp": timestamp,
-                    "datetime": datetime.now(),
                     "exe_name": monitor_info["exe_name"],
                     "exe_path": exe_path,
                     "file_prefix": monitor_info["file_prefix"],
                     "instance": monitor_info["instance"],
                     "device_binding_status": device_binding_status,
+                    "meta": meta,
+                    "context": context
                 }
 
                 # set core preprocess info in redis
@@ -108,9 +113,25 @@ def send_client_heartbeat(config, dpdk_monitor=None):
         batch = dpdk_monitor.flush() if dpdk_monitor is not None else []
         if batch:
             get_monitor_manager().flush_dpdk_batch(batch)
+        else:
+            logger.info("No DPDK batch to flush.")
         # client_heartbeat(config)
 
     schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
+def sync_instances_loop(config, dpdk_monitor):
+    """
+    Sync the DPDK monitor with the current running instances at regular intervals.
+    """
+    def _sync():
+        dpdk_monitor.sync_instances(get_monitor_manager().read_running_instances_info())
+
+    schedule.every(config.schedule_clean_crashed_core_interval-5).seconds.do(_sync)
 
     while True:
         schedule.run_pending()

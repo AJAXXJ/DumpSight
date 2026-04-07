@@ -23,6 +23,7 @@ DEFAULT_CONFIG: dict = {
     "tmp_dir": "tmp",
     "logs_dir": "logs",
     "core_dump_dir": "core_dumps",
+    "core_info_dir": "core_infos",
     "client_id": "",
     "client_secret": "",
     "server_url": "",
@@ -47,6 +48,7 @@ class DumpSightConfig:
     tmp_dir: str = field(init=False)
     logs_dir: str = field(init=False)
     core_dump_dir: str = field(init=False)
+    core_info_dir: str = field(init=False)
     client_id: str = field(init=False)
     client_secret: str = field(init=False)
     server_url: str = field(init=False)
@@ -74,6 +76,7 @@ class DumpSightConfig:
         self.tmp_dir = tmp
         self.logs_dir = os.path.join(tmp, data["logs_dir"])
         self.core_dump_dir = os.path.join(tmp, data["core_dump_dir"])
+        self.core_info_dir = os.path.join(tmp, data["core_info_dir"])
 
         # Remaining scalar fields
         for key in (
@@ -99,7 +102,7 @@ class DumpSightConfig:
 
     def _ensure_dirs(self) -> None:
         """Create required runtime directories."""
-        for d in (self.tmp_dir, self.logs_dir, self.core_dump_dir):
+        for d in (self.tmp_dir, self.logs_dir, self.core_dump_dir, self.core_info_dir):
             os.makedirs(d, exist_ok=True)
 
     def _flush(self) -> None:

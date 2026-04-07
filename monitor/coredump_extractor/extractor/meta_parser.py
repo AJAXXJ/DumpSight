@@ -1,0 +1,410 @@
+import os
+import re
+
+from ..constant import *
+from ..utils import safe_run
+
+def extract_dpdk_version():
+    """
+    提取 DPDK 版本信息
+    """
+    result = safe_run(["pkg-config", "--modversion", "libdpdk"], timeout=5)
+    if result.returncode == 0:
+        return (result.stdout or "").strip() or None
+    return None
+
+
+def extract_signal(output):
+    """
+    提取信号信息
+    """
+    match = re.search(r"Program (?:received|terminated with) signal (\w+|SIG\w+|\d+),(.+)", output)
+    if match:
+        return {
+            "name": match.group(1).strip(),
+            "description": match.group(2).strip()
+        }
+    return None
+
+
+def get_section(output, begin, end):
+    """
+    从完整 gdb 输出中提取 begin/end 之间的区块，缺失返回空字符串
+    """
+    m = re.search(
+        rf"{re.escape(begin)}\s*(.*?)\s*{re.escape(end)}",
+        output,
+        re.DOTALL
+    )
+    return m.group(1).strip() if m else ""
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[\s_()]+", "", (s or "").lower())
+
+
+def _is_idle_frame_text(text: str) -> bool:
+    """
+    等待态判定：使用更稳健的包含匹配，避免 __GI___libc_read / epoll_wait 等误判
+    """
+    t = _norm_text(text)
+    if not t:
+        return False
+
+    # 由常量衍生 + 常见变体关键字
+    tokens = {_norm_text(x) for x in IDLE_FRAMES}
+    tokens.update({
+        "read", "libcread", "epollwait", "pthreadcondwait",
+        "pthreadcondtimedwait", "futexwait", "nanosleep", "clocknanosleep"
+    })
+    return any(tok and tok in t for tok in tokens)
+
+
+def extract_crash_frame(output):
+    """
+    崩溃精确位置 函数名、文件、行号（仅解析 BT_FULL 区块）
+    """
+    section = get_section(output, "=== BT_FULL_BEGIN ===", "=== BT_FULL_END ===")
+    if not section:
+        return None
+
+    match = re.search(
+        r"#0\s+(?:0x[0-9a-f]+\s+in\s+)?(.+?)(?:\s+at\s+(.+):(\d+))?$",
+        section, re.MULTILINE
+    )
+    if match:
+        return {
+            "function":      match.group(1).strip(),
+            "file":          match.group(2),
+            "line":          match.group(3),
+            "has_debuginfo": match.group(2) is not None
+        }
+    return None
+
+
+def extract_backtrace(output, max_frames=10):
+    """
+    调用栈 取前 N 帧（仅解析 BT_FULL 区块）
+    """
+    section = get_section(output, "=== BT_FULL_BEGIN ===", "=== BT_FULL_END ===")
+    if not section:
+        return []
+
+    frames = []
+    seen_no = set()
+    for line in section.splitlines():
+        m = re.match(r"^\s*#(\d+)\s+(.*)$", line)
+        if not m:
+            continue
+        no = m.group(1)
+        if no in seen_no:
+            continue
+        seen_no.add(no)
+        frames.append(f"#{no} {m.group(2).strip()}")
+        if len(frames) >= max_frames:
+            break
+    return frames
+
+
+def extract_threads(output):
+    """
+    所有线程状态 标记崩溃线程（仅解析 INFO_THREADS 区块）
+    """
+    section = get_section(output, "=== INFO_THREADS_BEGIN ===", "=== INFO_THREADS_END ===")
+    if not section:
+        return {"total": 0, "crashed": None, "abnormal": [], "idle": 0}
+
+    crashed_thread = None
+    abnormal_threads = []
+    total = 0
+
+    for m in re.finditer(
+        r"^\s*(\*?)\s*(\d+)\s+Thread\s+(0x[0-9a-f]+)\s+\(LWP\s+(\d+)\)\s+(.+?)$",
+        section, re.MULTILINE
+    ):
+        total += 1
+        is_crashed = m.group(1).strip() == "*"
+        top = m.group(5).strip()
+        thread = {"id": m.group(2), "lwp": m.group(4), "bt_top": top}
+
+        if is_crashed:
+            crashed_thread = thread
+        elif not _is_idle_frame_text(top):
+            abnormal_threads.append(thread)
+
+    return {
+        "total": total,
+        "crashed": crashed_thread,
+        "abnormal": abnormal_threads,
+        "idle": total - len(abnormal_threads) - (1 if crashed_thread else 0)
+    }
+
+
+def extract_registers(output):
+    """
+    关键寄存器 rip / rsp / rbp 和函数参数寄存器（仅解析 REGISTERS 区块）
+    """
+    section = get_section(output, "=== REGISTERS_BEGIN ===", "=== REGISTERS_END ===")
+    regs = {}
+    if not section:
+        return regs
+
+    for key in KEY_REGISTER:
+        m = re.search(rf"{key}\s+(0x[0-9a-f]+)", section)
+        if m:
+            regs[key] = m.group(1)
+    return regs
+
+
+def extract_crash_address_type(registers, output):
+    """
+    判断 rip/崩溃地址落在哪个内存区域（仅解析 MAPPINGS 区块）
+    """
+    section = get_section(output, "=== MAPPINGS_BEGIN ===", "=== MAPPINGS_END ===")
+    rip = registers.get("rip")
+    if not rip or not section:
+        return None
+
+    addr = int(rip, 16)
+    for m in re.finditer(
+        r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+0x[0-9a-f]+\s+0x[0-9a-f]+\s*(.*?)$",
+        section, re.MULTILINE
+    ):
+        start = int(m.group(1), 16)
+        end = int(m.group(2), 16)
+        name = m.group(3).strip()
+        if start <= addr < end:
+            return {
+                "region": name or "anonymous",
+                "start": m.group(1),
+                "end": m.group(2),
+                "type": _classify_region(name)
+            }
+    return None
+
+
+def extract_cmdline(output):
+    """
+    提取崩溃时的完整命令行(含 EAL 参数)
+    优先级：
+    1) Core was generated by `...'
+    2) ARGS 区块（仅非空参数）
+    """
+    # 第一优先级：core 真实命令行
+    m = re.search(r"Core was generated by `(.+)'", output)
+    if m:
+        val = m.group(1).strip()
+        if val:
+            return val
+
+    # 第二优先级：ARGS 区块（show args）
+    args_section = get_section(output, "=== ARGS_BEGIN ===", "=== ARGS_END ===")
+    if not args_section:
+        return None
+
+    # 典型: Argument list ... is "--no-huge -m 64".
+    m2 = re.search(r'Argument list.*?\bis\s+"(.*)"\.\s*$', args_section, re.MULTILINE)
+    if m2:
+        val = m2.group(1).strip()
+        return val if val else None  # "" 视为无效
+
+    # 兜底：兼容未带引号格式
+    m3 = re.search(r'Argument list.*?\bis\s+(.+?)\s*$', args_section, re.MULTILINE)
+    if m3:
+        val = m3.group(1).strip().strip(".").strip().strip('"').strip("'")
+        return val if val else None
+
+    return None
+
+
+def extract_all_threads_bt(output):
+    """
+    thread apply all bt 5 的输出（仅解析 THREAD_BT 区块）
+    只保留非 idle 线程的完整栈；同线程内按 frame_no 去重
+    """
+    section = get_section(output, "=== THREAD_BT_BEGIN ===", "=== THREAD_BT_END ===")
+    if not section:
+        return {}
+
+    threads = {}
+    current_tid = None
+    current_frames = []
+    current_seen_no = set()
+
+    for line in section.splitlines():
+        head = re.match(r"^\s*Thread\s+(\d+)\s+\(Thread\s+0x[0-9a-f]+\s+\(LWP\s+(\d+)\)\):?\s*$", line)
+        if head:
+            if current_tid and current_frames:
+                threads[current_tid] = current_frames
+            current_tid = head.group(1)
+            current_frames = []
+            current_seen_no = set()
+            continue
+
+        fm = re.match(r"^\s*#(\d+)\s+(.*)$", line)
+        if current_tid and fm:
+            no = fm.group(1)
+            if no in current_seen_no:
+                continue
+            current_seen_no.add(no)
+            current_frames.append(f"#{no} {fm.group(2).strip()}")
+
+    if current_tid and current_frames:
+        threads[current_tid] = current_frames
+
+    result = {}
+    for tid, frames in threads.items():
+        top = frames[0] if frames else ""
+        if not _is_idle_frame_text(top):
+            result[tid] = frames
+
+    return result
+
+
+def extract_stack_memory(output):
+    """
+    x/4xg $rsp 和 x/4xg $rbp 的输出（解析 RSP/RBP 分段）
+    """
+    result = {}
+    for label, begin, end in [
+        ("rsp", "=== RSP_BEGIN ===", "=== RSP_END ==="),
+        ("rbp", "=== RBP_BEGIN ===", "=== RBP_END ==="),
+    ]:
+        section = get_section(output, begin, end)
+        if not section:
+            continue
+        values = []
+        for line in section.splitlines():
+            vals = re.findall(r"0x[0-9a-f]+", line)
+            if vals:
+                values.extend(vals[1:])  # 跳过行首地址
+        result[label] = values
+
+    return result
+
+
+def extract_shared_libs(output):
+    """
+    解析 gdb info shared 输出（仅解析 SHARED 区块）
+    """
+    section = get_section(output, "=== SHARED_BEGIN ===", "=== SHARED_END ===")
+    failed = []
+    loaded_basenames = set()
+
+    for m in re.finditer(
+        r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+(Yes|No)\s+(.+\.so\S*)",
+        section
+    ):
+        path = m.group(4).strip()
+        loaded = m.group(3) == "Yes"
+        basename = re.sub(r"\.so.*$", "", os.path.basename(path))
+
+        if not loaded:
+            failed.append(path)
+        loaded_basenames.add(basename)
+
+    missing = [lib for lib in CRITICAL_DPDK_LIBS if lib not in loaded_basenames]
+
+    result = {}
+    if failed:
+        result["failed"] = failed
+    if missing:
+        result["missing_critical"] = missing
+    if result == {}:
+        result["info"] = "All critical libraries are loaded"
+
+    return result
+
+
+def extract_dpdk_subsystem(output):
+    """
+    从栈帧里识别崩溃涉及的 DPDK 子系统
+    """
+    found = []
+    for name, pattern in SUBSYSTEMS.items():
+        if re.search(pattern, output):
+            found.append(name)
+    return found
+
+
+def _classify_region(name):
+    """
+    判断内存映射区域类型
+    """
+    if not name:
+        return "anonymous"
+    if name.startswith("[stack"):
+        return "stack"
+    if name.startswith("[heap"):
+        return "heap"
+    if name.startswith("[anon_hugepage]") or "/dev/hugepages" in name:
+        return "hugepage"
+    if "/var/run/dpdk" in name:
+        return "dpdk_shared_mem"
+    if "librte_" in name or name.endswith(".so") or ".so." in name:
+        return "shared_lib"
+    return "executable"
+
+
+def classify_crash(signal_info, registers):
+    """
+    根据信号和寄存器初步分类崩溃原因
+    """
+    if not signal_info:
+        return "unknown"
+
+    sig = signal_info.get("name", "")
+    rdi = registers.get("rdi", "")
+    rip = registers.get("rip", "")
+
+    if sig == "SIGSEGV":
+        if rdi == "0x0":
+            return "null_pointer_deref"
+        if rip == "0x0":
+            return "null_function_call"
+        return "invalid_memory_access"
+    if sig == "SIGBUS":
+        return "bus_error_alignment"
+    if sig == "SIGABRT":
+        return "abort"
+
+    return sig
+
+
+def parse_gdb_output(output):
+    registers = extract_registers(output)
+    signal    = extract_signal(output)
+    
+    return {
+        # 基础信息
+        "dpdk_version":    extract_dpdk_version(),
+
+        # 基础崩溃信息
+        "signal":          signal,
+        "crash_type":      classify_crash(signal, registers),
+        "cmdline":         extract_cmdline(output),
+
+        # 崩溃现场
+        "crash_frame":     extract_crash_frame(output),
+        "backtrace":       extract_backtrace(output, max_frames=10),
+        "registers":       registers,
+        "stack_memory":    extract_stack_memory(output),
+
+        # 线程
+        "threads":         extract_threads(output),
+        "threads_bt":      extract_all_threads_bt(output),
+        "policies": {
+            "threads_bt": {
+                "include_crashed": True,
+                "include_idle": False,
+                "note": "only non-idle threads including crashed thread",
+            }
+        },
+
+        # 环境
+        "shared_libs":     extract_shared_libs(output), # 太大了需要压缩
+        "dpdk_subsystems": extract_dpdk_subsystem(output),
+
+        # 崩溃地址类型
+        "crash_address_type": extract_crash_address_type(registers, output),
+    }

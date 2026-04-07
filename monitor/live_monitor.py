@@ -210,117 +210,187 @@ def check_devbind_on_anomaly():
 
     return alert # DPDK 设备绑定一致性检查
 
+def test_telemetry():
+    pass
+
 
 class DPDKLiveMonitor:
     """
     Monitors multiple DPDK instances concurrently, buffers and uploads in batches.
+    Supports dynamic add/remove of instances.
     """
 
-    def __init__(self, config, instances):
+    def __init__(self, config, instances=None):
         self.config = config
-        self.instances = instances
-
         self._buffer = deque()
+        self._buffer_lock = threading.Lock()
+
+        self._workers = {}  # key -> {"thread": t, "stop_event": e, "instance": instance}
+        self._global_stop = threading.Event()
         self._lock = threading.Lock()
-        self._stop = threading.Event()
-        self._threads = []
+
+        self.instances = instances or []
+
+    def _make_key(self, instance: dict):
+        return (
+            instance.get("pid"),
+            instance.get("file_prefix"),
+            instance.get("instance"),
+        )
 
     def _store(self, data):
-        """
-        Store collected data into the buffer. Thread-safe.
-        """
-        with self._lock:
+        with self._buffer_lock:
             self._buffer.append(data)
 
     def flush(self):
-        """
-        Take and return all buffered data. Thread-safe.
-        """
-        with self._lock:
+        with self._buffer_lock:
             if not self._buffer:
                 return []
             batch = list(self._buffer)
             self._buffer.clear()
         return batch
 
-    def _collect_one(self, pid, file_prefix, instance):
-        """
-        Collect data for one DPDK instance in a loop until stopped.
-        """
+    def _collect_one(self, instance, stop_event):
         tick = 0
+        pid = instance.get("pid")
+        file_prefix = instance.get("file_prefix")
+        instance_id = instance.get("instance")
+
         ident = {
             "pid": pid,
             "file_prefix": file_prefix,
-            "instance": instance,
+            "instance": instance_id,
         }
 
-        while not self._stop.is_set():
+        while not stop_event.is_set() and not self._global_stop.is_set():
             t0 = time.time()
             try:
                 alive = is_dpdk_alive(file_prefix or "rte")
+
                 if not alive:
-                    self._store(
-                        {
-                            **ident,
-                            "timestamp": t0,
-                            "type": "heartbeat",
-                            "is_alive": False,
-                        }
-                    )
-                    self._stop.wait(1.0)
+                    self._store({
+                        **ident,
+                        "timestamp": t0,
+                        "type": "heartbeat",
+                        "is_alive": False,
+                    })
+                    stop_event.wait(1.0)
                     tick += 1
                     continue
 
-                self._store(
-                    {
-                        **ident,
-                        "timestamp": t0,
-                        "type": "1s",
-                        **poll_1s(file_prefix, instance),
-                    }
-                )
+                self._store({
+                    **ident,
+                    "timestamp": t0,
+                    "type": "1s",
+                    **poll_1s(file_prefix, instance_id),
+                })
 
                 if tick % 5 == 0:
-                    self._store(
-                        {
-                            **ident,
-                            "timestamp": t0,
-                            "type": "5s",
-                            **poll_5s(file_prefix, instance),
-                        }
-                    )
+                    self._store({
+                        **ident,
+                        "timestamp": t0,
+                        "type": "5s",
+                        **poll_5s(file_prefix, instance_id),
+                    })
 
             except Exception as e:
-                logger.error(f"[Collect error] {file_prefix}:{instance} {e}")
-                self._store(
-                    {**ident, "timestamp": t0, "type": "error", "error": str(e)}
-                )
+                logger.error(f"[Collect error] {file_prefix}:{instance_id} {e}")
+                self._store({
+                    **ident,
+                    "timestamp": t0,
+                    "type": "error",
+                    "error": str(e),
+                })
 
             tick += 1
-            self._stop.wait(max(0, 1.0 - (time.time() - t0)))
+            stop_event.wait(max(0, 1.0 - (time.time() - t0)))
+
+    def add_instance(self, instance: dict):
+        """
+        Add one instance to monitoring.
+        """
+        if self._global_stop.is_set():
+            return
+        key = self._make_key(instance)
+
+        with self._lock:
+            if key in self._workers:
+                return
+
+            stop_event = threading.Event()
+            t = threading.Thread(
+                target=self._collect_one,
+                args=(instance, stop_event),
+                name=f"dpdk-{instance.get('exe_name')}-{instance.get('file_prefix')}-{instance.get('instance')}",
+                daemon=True,
+            )
+
+            self._workers[key] = {
+                "thread": t,
+                "stop_event": stop_event,
+                "instance": instance,
+            }
+
+            t.start()
+
+    def remove_instance(self, instance: dict):
+        """
+        Stop one instance from monitoring.
+        """
+        key = self._make_key(instance)
+
+        with self._lock:
+            worker = self._workers.pop(key, None)
+
+        if not worker:
+            return
+
+        worker["stop_event"].set()
+        worker["thread"].join(timeout=5)
+
+    def sync_instances(self, instances):
+        """
+        Sync current running instances with monitor list.
+        Add new ones and remove non-running ones.
+        """
+        new_map = {self._make_key(i): i for i in instances}
+
+        with self._lock:
+            old_keys = set(self._workers.keys())
+
+        new_keys = set(new_map.keys())
+
+        # add
+        for key in new_keys - old_keys:
+            self.add_instance(new_map[key])
+
+        # remove
+        for key in old_keys - new_keys:
+            with self._lock:
+                worker = self._workers.pop(key, None)  # 原子 pop
+            if worker:
+                worker["stop_event"].set()
+                worker["thread"].join(timeout=5)
 
     def start(self):
         """
-        Start monitoring all DPDK instances in separate threads.
+        Start initial monitoring.
         """
         for instance in self.instances:
-            t = threading.Thread(
-                target=self._collect_one,
-                args=(
-                    instance.get("pid"),
-                    instance.get("file_prefix"),
-                    instance.get("instance")
-                ),
-                name=f"dpdk-{instance.get("exe_name")}-{instance.get('file_prefix')}-{instance.get('instance')}",
-                daemon=True,
-            )
-            self._threads.append(t)
-            t.start()
+            self.add_instance(instance)
 
     def stop(self):
         """
-        Stop monitoring all DPDK instances.
+        Stop all monitoring threads.
         """
-        self._stop.set()
-        for t in self._threads:
-            t.join()
+        self._global_stop.set()
+
+        with self._lock:
+            workers = list(self._workers.values())
+            self._workers.clear()
+
+        for worker in workers:
+            worker["stop_event"].set()
+
+        for worker in workers:
+            worker["thread"].join(timeout=5)

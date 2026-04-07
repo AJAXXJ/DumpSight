@@ -5,6 +5,9 @@ from config import config
 import threading
 
 class RedisUtil:
+    """
+    Redis utility class.
+    """
 
     def __init__(self):
         try:
@@ -57,6 +60,22 @@ class RedisUtil:
             logger.error(f"Redis get error for key {key}: {e}")
             return None
 
+    def get_many(self, keys):
+        """
+        Get multiple keys in one batch via pipeline.
+        """
+        if not self.redis_client or not keys:
+            return {}
+        try:
+            pipe = self.redis_client.pipeline()
+            for key in keys:
+                pipe.get(key)
+            values = pipe.execute()
+            return {key: value for key, value in zip(keys, values) if value is not None}
+        except RedisError as e:
+            logger.error(f"Redis get_many error: {e}")
+            return {}
+        
     def delete(self, key):
         if not self.redis_client:
             logger.warning("Redis client not available. delete operation skipped.")
@@ -86,6 +105,55 @@ class RedisUtil:
         except RedisError as e:
             logger.error(f"Redis exists error for key {key}: {e}")
             return False
+        
+    def scan(self, pattern):
+        """
+        Scan keys matching a pattern, returns a list of keys.
+        """
+        if not self.redis_client:
+            logger.warning("Redis client not available. scan operation skipped.")
+            return []
+        try:
+            keys = []
+            cursor = 0
+            while True:
+                cursor, partial = self.redis_client.scan(
+                    cursor=cursor, match=pattern, count=100
+                )
+                keys.extend(partial)
+                if cursor == 0:
+                    break
+            return keys
+        except RedisError as e:
+            logger.error(f"Redis scan error for pattern {pattern}: {e}")
+            return []
+
+    def scan_with_values(self, pattern):
+        """
+        Scan keys matching a pattern and return key-value pairs in one batch.
+        """
+        if not self.redis_client:
+            return {}
+        try:
+            keys = []
+            cursor = 0
+            while True:
+                cursor, partial = self.redis_client.scan(
+                    cursor=cursor, match=pattern, count=100
+                )
+                keys.extend(partial)
+                if cursor == 0:
+                    break
+            if not keys:
+                return {}
+            pipe = self.redis_client.pipeline()
+            for key in keys:
+                pipe.get(key)
+            values = pipe.execute()
+            return dict(zip(keys, values))
+        except RedisError as e:
+            logger.error(f"Redis scan_with_values error for pattern {pattern}: {e}")
+            return {}
 
 _redis_util = None
 _lock = threading.Lock()

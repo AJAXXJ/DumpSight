@@ -31,3 +31,4 @@ def setup_logger(log_file=None, level=logging.INFO):
     return logger
 
 logger = setup_logger("DumpSight_running.log", logging.DEBUG)
+# logging.getLogger("schedule").setLevel(logging.INFO)

@@ -16,7 +16,7 @@ class RedisMonitorManager:
             logger.warning(
                 "Redis configuration not found. Please run 'dumpsight setup' first."
             )
-            self.redis_client = None
+            self.client_id = None
             self.info_prefix = None
             return
         
@@ -25,55 +25,7 @@ class RedisMonitorManager:
 
     def _info_key(self, pid):
         return f"{self.info_prefix}:{pid}"
-
-    def scan(self, pattern):
-        """
-        Scan keys matching a pattern, returns a list of keys.
-        """
-        if not self.redis_client:
-            logger.warning("Redis client not available. scan operation skipped.")
-            return []
-        try:
-            keys = []
-            cursor = 0
-            while True:
-                cursor, partial = self.redis_client.scan(
-                    cursor=cursor, match=pattern, count=100
-                )
-                keys.extend(partial)
-                if cursor == 0:
-                    break
-            return keys
-        except RedisError as e:
-            logger.error(f"Redis scan error for pattern {pattern}: {e}")
-            return []
-
-    def scan_with_values(self, pattern):
-        """
-        Scan keys matching a pattern and return key-value pairs in one batch.
-        """
-        if not self.redis_client:
-            return {}
-        try:
-            keys = []
-            cursor = 0
-            while True:
-                cursor, partial = self.redis_client.scan(
-                    cursor=cursor, match=pattern, count=100
-                )
-                keys.extend(partial)
-                if cursor == 0:
-                    break
-            if not keys:
-                return {}
-            pipe = self.redis_client.pipeline()
-            for key in keys:
-                pipe.get(key)
-            values = pipe.execute()
-            return dict(zip(keys, values))
-        except RedisError as e:
-            logger.error(f"Redis scan_with_values error for pattern {pattern}: {e}")
-            return {}
+        
 
     def read_monitor_list(self):
         """
@@ -104,7 +56,7 @@ class RedisMonitorManager:
         """
         Get info for a specific PID.
         """
-        data = redis_util.get(self._info_key(pid))
+        data = get_redis_util().get(self._info_key(pid))
         if not data:
             return None
         try:
@@ -121,9 +73,9 @@ class RedisMonitorManager:
         pid = str(pid)
         existing = self.get_pid_info(pid)
         if existing and existing.get("status") != "running":
-            redis_util.delete(self._info_key(pid))
+            get_redis_util().delete(self._info_key(pid))
 
-        redis_util.set(self._info_key(pid), json.dumps(info))
+        get_redis_util().set(self._info_key(pid), json.dumps(info))
 
     def set_pid_status(self, pid, status):
         """
@@ -204,6 +156,30 @@ class RedisMonitorManager:
 
             key = f"{self.client_id}:log:{pid}:{record_type}:{timestamp_second}"
             get_redis_util().set(key, json.dumps(record), expire=ttl)
+
+
+    def read_running_instances_info(self):
+        """
+        Read information about running DPDK instances from the monitor file.
+        """
+        instances = []
+        running_apps_info = self.read_monitor_list_by_status(
+            status="running"
+        )
+        for pid, info in running_apps_info:
+            instances.append(
+                {
+                    "pid": pid,
+                    "start_time": info.get("start_time"),
+                    "exe_name": info.get("exe_name"),
+                    "exe_path": info.get("exe_path"),
+                    "file_prefix": info.get("file_prefix"),
+                    "instance": info.get("instance"),
+                    "log_path": info.get("log_path"),
+                }
+            )
+        return instances
+    
 
 _monitor_manager = None
 _monitor_lock = threading.Lock()

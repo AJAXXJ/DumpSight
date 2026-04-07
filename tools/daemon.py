@@ -5,7 +5,12 @@ import threading
 from monitor.live_monitor import DPDKLiveMonitor
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_heartbeat
-from tools.events import clean_crashed_core, monitor_core, send_client_heartbeat
+from tools.events import (
+    clean_crashed_core,
+    monitor_core,
+    send_client_heartbeat,
+    sync_instances_loop,
+)
 
 SERVICE_PATH = "/etc/systemd/system/dumpsight.service"
 
@@ -51,26 +56,6 @@ def systemctl(action):
     subprocess.run(["systemctl", action, "dumpsight"], check=True)
 
 
-def read_running_instances_info():
-    """
-    Read information about running DPDK instances from the monitor file.
-    """
-    instances = []
-    running_apps_info = get_monitor_manager().read_monitor_list_by_status(status="running")
-    for pid, info in running_apps_info:
-        instances.append(
-            {
-                "pid": pid,
-                "start_time": info.get("start_time"),
-                "exe_name": info.get("exe_name"),
-                "exe_path": info.get("exe_path"),
-                "file_prefix": info.get("file_prefix"),
-                "instance": info.get("instance"),
-                "log_path": info.get("log_path"),
-            }
-        )
-    return instances
-
 
 def run_daemon(config):
     """
@@ -79,7 +64,7 @@ def run_daemon(config):
     # Initialize the DPDK monitor with the current running instances
     dpdk_monitor = DPDKLiveMonitor(
         config=config,
-        instances=read_running_instances_info(),
+        instances=get_monitor_manager().read_running_instances_info(),
     )
     dpdk_monitor.start()
 
@@ -94,6 +79,12 @@ def run_daemon(config):
             target=send_client_heartbeat,
             args=(config, dpdk_monitor),
             name="heartbeat",
+            daemon=True,
+        ),
+        threading.Thread(
+            target=sync_instances_loop,
+            args=(config, dpdk_monitor),
+            name="sync_monitor",
             daemon=True,
         ),
     ]

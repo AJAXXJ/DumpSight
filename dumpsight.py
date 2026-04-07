@@ -5,10 +5,12 @@ import psutil
 import subprocess
 from pathlib import Path
 from config import config
+from monitor.dpdk_tools.dpdk_telemetry import test_telemetry_connection
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_register, client_status
 from tools.daemon import install_systemd_service, run_daemon, systemctl
 from tools.utils import check_root, id_generator
+import shlex
 
 
 @click.group()
@@ -123,7 +125,7 @@ def status():
     if getattr(config, "server_url", None) is None:
         click.echo("DumpSight is not setup yet.")
         return
-    
+
     # core_pattern status
     try:
         with open("/proc/sys/kernel/core_pattern") as f:
@@ -135,13 +137,25 @@ def status():
     # daemon status
     try:
         result = subprocess.run(
-            ["systemctl", "is-active", "dumpsight"], check=True, capture_output=True
+            ["systemctl", "is-active", "dumpsight"],
+            capture_output=True,  # 去掉 check=True
         )
         daemon_status = result.stdout.decode().strip()
-        click.echo(f"DumpSight daemon status: {daemon_status}")
-    except subprocess.CalledProcessError as e:
-        click.echo(f"DumpSight daemon is not active: {e}", err=True)
-        click.echo("You can setup using 'dumpsight setup' command.")
+
+        if daemon_status == "active":
+            click.echo(f"DumpSight daemon status: {daemon_status} ✓")
+        elif daemon_status == "activating":
+            click.echo(f"DumpSight daemon status: {daemon_status} (starting up...)")
+        elif daemon_status == "failed":
+            click.echo(f"DumpSight daemon status: {daemon_status} ✗", err=True)
+            click.echo("Run 'journalctl -u dumpsight -n 50' to check logs.")
+        else:
+            # inactive / unknown
+            click.echo(f"DumpSight daemon is not active: {daemon_status}", err=True)
+            click.echo("You can setup using 'dumpsight setup' command.")
+
+    except Exception as e:
+        click.echo(f"Failed to check daemon status: {e}", err=True)
 
     # config status
     click.echo("Current DumpSight configuration:")
@@ -154,13 +168,8 @@ def status():
     #     click.echo(f"Client status check failed: {e}", err=True)
 
 
-@click.command(
-    context_settings=dict(
-        ignore_unknown_options=True,
-        allow_extra_args=True,
-    )
-)
-@click.argument("dpdk_running_args", nargs=-1)
+@click.command()
+@click.argument("dpdk_running_args")
 @click.option(
     "--file_prefix",
     default=None,
@@ -169,6 +178,7 @@ def status():
 @click.option(
     "--instance",
     default=None,
+    type=int,
     help="The instance name for the dpdk app.",
 )
 @click.option(
@@ -180,29 +190,42 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     """
     Monitor DPDK apps.
     """
-    cmd = list(dpdk_running_args)
+    dpdk_cmd_str = dpdk_running_args
+    cmd = shlex.split(dpdk_cmd_str)
+    status =  "running"
+
+    if file_prefix is not None:
+        cmd += [f"--file-prefix={file_prefix}"]
+    else:
+        file_prefix = "rte"
+
+    if instance is not None:
+        cmd += [f"--instance={instance}"]
+    else:
+        instance = 0
 
     # Run the DPDK app and redirect output to the specified log file
     try:
-        cmd_str = " ".join(cmd)
         if log is None:
             log = f"dpdk_{id_generator.generate_unique_id()}.log"
         log = os.path.join(config.logs_dir, log)
 
-        if file_prefix:
-            cmd_str = f"{cmd_str} --file-prefix={file_prefix}"
-
-        if instance:
-            cmd_str = f"{cmd_str} --instance={instance}"
-        
+        cmd_str = " ".join(cmd)
         process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
+
+        time.sleep(2)
 
         click.echo(
             f"DPDK running command executed successfully. ELA log is redirected to {log}"
         )
     except (OSError, FileNotFoundError) as e:
         click.echo(f"Error running dpdk app: {e}", err=True)
-        return
+        status = "stop"
+
+    # test tel connection
+    if not test_telemetry_connection(file_prefix, instance):
+        click.echo(f"Error testing telemetry connection for dpdk app")
+        status = "stop"
 
     # exe path
     dpdk_app_path = cmd[0]
@@ -214,13 +237,13 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     pid = children[0].pid if children else process.pid
 
     monitor_info = {
-        "cmd": cmd_str,
+        "cmd": cmd,
         "exe_name": Path(dpdk_app_path).name,
         "exe_path": dpdk_app_path,
         "file_prefix": file_prefix,
         "instance": instance,
         "log_path": log,
-        "status": "running",
+        "status": status,
         "start_time": time.time(),
     }
 
@@ -263,6 +286,7 @@ def daemon_restart():
 cli.add_command(setup)
 cli.add_command(status)
 cli.add_command(monitor)
+cli.add_command(daemon)
 cli.add_command(daemon_start)
 cli.add_command(daemon_stop)
 cli.add_command(daemon_restart)
