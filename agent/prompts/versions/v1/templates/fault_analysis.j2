@@ -1,0 +1,33 @@
+Analyze the following DPDK crash scenario:
+
+Client Info:
+{{ client_info }}
+
+DPDK Info:
+{{ dpdk_info }}
+
+Crash Stack:
+{{ crash_stack }}
+
+{% if similar_cases %}
+Similar Historical Cases:
+{% for case in similar_cases %}
+- Case ID: {{ case.id }} | Summary: {{ case.summary }}
+{% endfor %}
+{% endif %}
+
+Extra Context:
+{{ extra_context }}
+
+{% if few_shots %}
+Examples for reference:
+{% for shot in few_shots %}
+Input: {{ shot.input }}
+Output: {{ shot.output }}
+{% endfor %}
+{% endif %}
+
+Provide a structured analysis including:
+1. Likely root cause
+2. Severity assessment
+3. Suggested repair steps

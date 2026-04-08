@@ -1,0 +1,22 @@
+- input: |
+    Client Info: {"os": "linux", "cpu": "x86_64"}
+    DPDK Info: {"version": "23.08"}
+    Crash Stack: "Segfault at 0x0"
+  output: |
+    Root Cause: Null pointer dereference
+    Severity: critical
+    Suggested Repair:
+      - Check pointer initialization
+      - Add null pointer checks
+      - Update DPDK to latest patch
+
+- input: |
+    Client Info: {"os": "linux", "cpu": "arm"}
+    DPDK Info: {"version": "22.11"}
+    Crash Stack: "Memory leak in rte_eth_dev_start"
+  output: |
+    Root Cause: Resource leak in device initialization
+    Severity: warning
+    Suggested Repair:
+      - Review rte_eth_dev_start usage
+      - Ensure all allocated memory is freed
