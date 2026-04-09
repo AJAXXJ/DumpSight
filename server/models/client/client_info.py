@@ -13,4 +13,4 @@ class ClientInfo(BaseModel):
 
     client_id = Column(String(255), nullable=True, unique=True)
 
-    dpdk_context = Column(JSON)
+    environment = Column(JSON, nullable=True)

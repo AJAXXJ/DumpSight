@@ -1,20 +1,17 @@
-from __future__ import annotations
-
 import logging
-
-from graphs.state import DPDKDiagnosisState
+from agent.graphs.state import DPDKDiagnosisState
 
 logger = logging.getLogger(__name__)
 
 
-def edge_after_fetch(state: DPDKDiagnosisState) -> str:
-    """数据拉取后：有错误则进错误处理，否则进案例检索。"""
+def edge_after_fetch(state):
+    """数据拉取后 有错误则进错误处理 否则进案例检索"""
     if state.get("error"):
         return "handle_error"
     return "retrieve_cases"
 
 
-def edge_after_reasoning(state: DPDKDiagnosisState) -> str:
+def edge_after_reasoning(state):
     """
     根因推理后：
     - 有错误          → handle_error
@@ -38,6 +35,6 @@ def edge_after_reasoning(state: DPDKDiagnosisState) -> str:
     return "generate_report"
 
 
-def edge_after_repair(state: DPDKDiagnosisState) -> str:
-    """修复建议节点后：始终进报告生成（repair 节点本身不会写 error）。"""
+def edge_after_repair(state):
+    """修复建议节点后 始终进报告生成 repair 节点本身不会写 error"""
     return "generate_report"

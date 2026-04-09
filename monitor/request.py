@@ -1,5 +1,5 @@
 import requests
-from monitor.live_monitor import collect_dpdk_context
+from monitor.live_monitor import environment
 from tools.encrypt_decrypt import encrypt
 from tools.logger import logger
 
@@ -34,14 +34,13 @@ def client_register(config):
         payload = {
             "client_id": config.client_id,
             "client_secret": encrypt(config.secret_key, config.encryption_key),
-            "dpdk_context": collect_dpdk_context(),
+            "environment": environment(),
         }
 
         response = requests.post(register_url, json=payload)
 
         if response.status_code == 200:
             logger.info("Client registered successfully.")
-            return response.json()
         else:
             raise Exception(
                 f"Client registration failed with status code: {response.status_code}"

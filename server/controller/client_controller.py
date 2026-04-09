@@ -1,6 +1,6 @@
-from flask import Blueprint, app, jsonify, request
+from flask import Blueprint, jsonify, request
 
-from server.service.client_service import client_core_analyse_service
+from server.service.client_service import client_core_analyse_service, client_register_service, client_status_service
 
 client_bp = Blueprint("client", __name__)
 
@@ -8,8 +8,7 @@ client_bp = Blueprint("client", __name__)
 def client_status():
     client_id = request.args.get("client_id")
     if client_id:
-        # TODO
-        return jsonify(None), 200
+        return jsonify(client_status_service(client_id)), 200
     else:
         return jsonify({"error": "client_id is required"}), 400
 
@@ -18,8 +17,7 @@ def client_status():
 def client_register():
     try:
         client_register_info = request.get_json()
-        # TODO 
-
+        client_register_service(client_register_info)
         return jsonify({"message": "Client registered successfully"}), 200
 
     except Exception as e:

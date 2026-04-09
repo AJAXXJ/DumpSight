@@ -1,4 +1,4 @@
-from main import app
+from flask import current_app
 from sqlalchemy import create_engine
 from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
@@ -9,11 +9,11 @@ Base = declarative_base()
 class MysqlUtil:
 
     def __init__(self):
-        host = app.config.get("MYSQL_HOST", "localhost")
-        port = app.config.get("MYSQL_PORT", 3306)
-        user = app.config.get("MYSQL_USER", "root")
-        password = app.config.get("MYSQL_PASSWORD", "")
-        database = app.config.get("MYSQL_DATABASE", "")
+        host = current_app.config.get("MYSQL_HOST", "localhost")
+        port = current_app.config.get("MYSQL_PORT", 3306)
+        user = current_app.config.get("MYSQL_USER", "root")
+        password = current_app.config.get("MYSQL_PASSWORD", "")
+        database = current_app.config.get("MYSQL_DATABASE", "")
 
         db_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
 

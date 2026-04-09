@@ -1,23 +1,50 @@
+import subprocess
 import time
 import json
 import threading
 from collections import deque
 from monitor.dpdk_tools.cpu_layout import get_cpu_layout_simple
 from monitor.dpdk_tools.dpdk_hugepages import get_hugepage_status
-from monitor.dpdk_tools.dpdk_devbind_helper import get_device_status, get_network_devices
+from monitor.dpdk_tools.dpdk_devbind_helper import (
+    get_device_status,
+    get_network_devices,
+)
 from monitor.dpdk_tools import dpdk_telemetry as telemetry
 from tools.logger import logger
 
 
-def collect_dpdk_context():
+def environment():
     """
     Collects the DPDK context information.
     """
     return {
-        "cpu": get_cpu_layout_simple(), # CPU 拓扑 / 核心分布信息
-        "hugepage": get_hugepage_status(), # HugePage 状态
-        "devbind": get_device_status(), # 网卡设备绑定状态
+        "version": dpdk_version(),
+        "cpu": get_cpu_layout_simple(),  # CPU 拓扑 / 核心分布信息
+        "hugepage": get_hugepage_status(),  # HugePage 状态
+        "devbind": get_device_status(),  # 网卡设备绑定状态
     }
+
+
+def dpdk_version():
+    """
+    Retrieves the DPDK version using pkg-config.
+    """
+    try:
+        result = subprocess.run(
+            ["pkg-config", "--modversion", "libdpdk"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+        version = result.stdout.strip()
+        return version
+    except subprocess.CalledProcessError as e:
+        print("Error running pkg-config:", e.stderr.strip())
+        return ""
+    except FileNotFoundError:
+        print("pkg-config not found")
+        return ""
 
 
 def dpdk_info(file_prefix=None, instance=None):
@@ -95,12 +122,12 @@ def poll_1s(file_prefix=None, instance=None):
     ipsec_stats = results["/ipsec/sa/stats"].get("/ipsec/sa/stats", {})
 
     return {
-        "is_alive": is_dpdk_alive(file_prefix or "rte"), # DPDK 实例是否存活
-        "ethdev_stats": ethdev_stats, # 网卡统计 用于 丢包分析 吞吐监控 网卡异常检测
-        "ethdev_link": ethdev_link, # 链路状态
-        "mempool_stats": mempool_stats, # 内存池 用于 内存泄漏检测 buffer 是否耗尽 RX 无法分配 mbuf
-        "dma_stats": dma_stats, # DMA设备 性能优化 DMA失败排查
-        "ipsec_stats": ipsec_stats, # IPsec 安全统计
+        "is_alive": is_dpdk_alive(file_prefix or "rte"),  # DPDK 实例是否存活
+        "ethdev_stats": ethdev_stats,  # 网卡统计 用于 丢包分析 吞吐监控 网卡异常检测
+        "ethdev_link": ethdev_link,  # 链路状态
+        "mempool_stats": mempool_stats,  # 内存池 用于 内存泄漏检测 buffer 是否耗尽 RX 无法分配 mbuf
+        "dma_stats": dma_stats,  # DMA设备 性能优化 DMA失败排查
+        "ipsec_stats": ipsec_stats,  # IPsec 安全统计
     }
 
 
@@ -173,11 +200,11 @@ def poll_5s(file_prefix=None, instance=None):
     }
 
     return {
-        "ethdev_xstats": xstats, # 高级扩展网卡统计
-        "lcore_usage": lcore_usage, # CPU 核使用情况
-        "heap_stats": heap_stats, # DPDK 内存堆
-        "eventdev_stats": eventdev_stats, # 事件设备
-        "nix_stats": nix_stats, # Marvell 网卡 CNXK架构 的专用统计
+        "ethdev_xstats": xstats,  # 高级扩展网卡统计
+        "lcore_usage": lcore_usage,  # CPU 核使用情况
+        "heap_stats": heap_stats,  # DPDK 内存堆
+        "eventdev_stats": eventdev_stats,  # 事件设备
+        "nix_stats": nix_stats,  # Marvell 网卡 CNXK架构 的专用统计
     }
 
 
@@ -208,7 +235,8 @@ def check_devbind_on_anomaly():
             }
         )
 
-    return alert # DPDK 设备绑定一致性检查
+    return alert  # DPDK 设备绑定一致性检查
+
 
 def test_telemetry():
     pass
@@ -225,7 +253,9 @@ class DPDKLiveMonitor:
         self._buffer = deque()
         self._buffer_lock = threading.Lock()
 
-        self._workers = {}  # key -> {"thread": t, "stop_event": e, "instance": instance}
+        self._workers = (
+            {}
+        )  # key -> {"thread": t, "stop_event": e, "instance": instance}
         self._global_stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -268,39 +298,47 @@ class DPDKLiveMonitor:
                 alive = is_dpdk_alive(file_prefix or "rte")
 
                 if not alive:
-                    self._store({
-                        **ident,
-                        "timestamp": t0,
-                        "type": "heartbeat",
-                        "is_alive": False,
-                    })
+                    self._store(
+                        {
+                            **ident,
+                            "timestamp": t0,
+                            "type": "heartbeat",
+                            "is_alive": False,
+                        }
+                    )
                     stop_event.wait(1.0)
                     tick += 1
                     continue
 
-                self._store({
-                    **ident,
-                    "timestamp": t0,
-                    "type": "1s",
-                    **poll_1s(file_prefix, instance_id),
-                })
-
-                if tick % 5 == 0:
-                    self._store({
+                self._store(
+                    {
                         **ident,
                         "timestamp": t0,
-                        "type": "5s",
-                        **poll_5s(file_prefix, instance_id),
-                    })
+                        "type": "1s",
+                        **poll_1s(file_prefix, instance_id),
+                    }
+                )
+
+                if tick % 5 == 0:
+                    self._store(
+                        {
+                            **ident,
+                            "timestamp": t0,
+                            "type": "5s",
+                            **poll_5s(file_prefix, instance_id),
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"[Collect error] {file_prefix}:{instance_id} {e}")
-                self._store({
-                    **ident,
-                    "timestamp": t0,
-                    "type": "error",
-                    "error": str(e),
-                })
+                self._store(
+                    {
+                        **ident,
+                        "timestamp": t0,
+                        "type": "error",
+                        "error": str(e),
+                    }
+                )
 
             tick += 1
             stop_event.wait(max(0, 1.0 - (time.time() - t0)))

@@ -1,7 +1,7 @@
 import redis
 from tools.logger import logger
 from redis.exceptions import RedisError, ConnectionError
-from main import app
+from flask import current_app
 import threading
 
 class RedisUtil:
@@ -15,10 +15,10 @@ class RedisUtil:
         """
         try:
             self.redis_client = redis.Redis(
-                host=app.config['REDIS_HOST'],
-                port=int(app.config['REDIS_PORT']),
-                password=app.config['REDIS_DB'],
-                db=int(app.config['REDIS_PASSWORD']),
+                host=current_app.config['REDIS_HOST'],
+                port=int(current_app.config['REDIS_PORT']),
+                password=current_app.config['REDIS_DB'],
+                db=int(current_app.config['REDIS_PASSWORD']),
                 decode_responses=True,
                 socket_timeout=5,
                 socket_connect_timeout=5,
@@ -160,8 +160,6 @@ class RedisUtil:
         except RedisError as e:
             logger.error(f"Redis scan_with_values error for pattern {pattern}: {e}")
             return {}
-        
-redis_util = RedisUtil()
 
 _redis_util = None
 _redis_lock = threading.Lock()

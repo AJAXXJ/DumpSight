@@ -101,11 +101,11 @@ def setup(
     config.set_config("redis_password", redis_password)
 
     # register client to server
-    # try:
-    #     client_register(config)
-    # except Exception as e:
-    #     click.echo(f"Client registration failed: {e}", err=True)
-    #     return
+    try:
+        client_register(config)
+    except Exception as e:
+        click.echo(f"Client registration failed: {e}", err=True)
+        return
 
     # configure core pattern
     pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
@@ -161,11 +161,11 @@ def status():
     click.echo("Current DumpSight configuration:")
 
     # client registration status
-    # try:
-    #     client_status(config)
-    #     click.echo("Client already registered with the server.")
-    # except Exception as e:
-    #     click.echo(f"Client status check failed: {e}", err=True)
+    try:
+        client_status(config)
+        click.echo("Client already registered with the server.")
+    except Exception as e:
+        click.echo(f"Client status check failed: {e}", err=True)
 
 
 @click.command()

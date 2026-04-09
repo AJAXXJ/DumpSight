@@ -1,12 +1,19 @@
+import time
 from server.models.client.client_info import ClientInfo
 
-def add_client_info(client_id, dpdk_context):
+def add_client_info(client_id, environment):
     client_info = ClientInfo.create(
         client_id=client_id,
-        dpdk_context=dpdk_context
+        environment=environment,
+        timestamp=str(int(time.time()))
     )
     return client_info.id
-    
+
+def update_client_heartbeat(client_id):
+    ClientInfo.update(
+        filters={"client_id": client_id},
+        updates={}
+    )
 
 def get_client_info(client_id):
     client_info = ClientInfo.get(client_id=client_id)

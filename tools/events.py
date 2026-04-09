@@ -70,13 +70,8 @@ def monitor_core(config):
                 end_time = time.time()
 
                 preprocess_info = {
-                    "pid": pid,
                     "core_timestamp": timestamp,
                     "process_time": round(end_time - start_time, 4),
-                    "exe_name": monitor_info["exe_name"],
-                    "exe_path": exe_path,
-                    "file_prefix": monitor_info["file_prefix"],
-                    "instance": monitor_info["instance"],
                     "device_binding_status": device_binding_status,
                     "meta": meta,
                     "context": context
@@ -86,7 +81,7 @@ def monitor_core(config):
                 get_monitor_manager().set_preprocess_core_info(preprocess_info)
                 
                 # report crash to server
-                # report_crash(config, pid, timestamp)
+                report_crash(config, pid, timestamp)
 
 
     finally:
@@ -121,7 +116,7 @@ def send_client_heartbeat(config, dpdk_monitor=None):
             get_monitor_manager().flush_dpdk_batch(batch)
         else:
             logger.info("No DPDK batch to flush.")
-        # client_heartbeat(config)
+        client_heartbeat(config)
 
     schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush)
 

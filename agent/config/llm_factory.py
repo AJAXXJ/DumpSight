@@ -1,23 +1,14 @@
-from __future__ import annotations
-
 import logging
 from functools import lru_cache
-from typing import Literal
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.language_models import BaseChatModel
-from langchain_core.embeddings import Embeddings
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
-from config.settings import get_settings
+from agent.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-
-LLMMode = Literal["fast", "strong"]
-
-
 @lru_cache(maxsize=2)
-def get_llm(mode: LLMMode = "fast") -> BaseChatModel:
+def get_llm(mode = "fast"):
     """
     获取 LLM：
         fast   → 低成本 / 高吞吐（Agent / 工具调用）
@@ -55,7 +46,7 @@ def get_llm(mode: LLMMode = "fast") -> BaseChatModel:
 
 
 @lru_cache(maxsize=1)
-def get_embedding() -> Embeddings:
+def get_embedding():
     """
     使用同一 OpenAI-compatible embedding
     """

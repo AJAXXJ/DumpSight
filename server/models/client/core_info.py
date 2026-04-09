@@ -11,16 +11,12 @@ class CoreInfo(BaseModel):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    client_id = Column(String(255), nullable=True, unique=True)
+    client_info_id = Column(Integer, nullable=True)
 
-    pid = Column(String(255), nullable=True)
+    crash_report = Column(String(255), nullable=True)
 
-    timestamp = Column(String(255), nullable=True)
+    process_time = Column(Integer, nullable=True)
 
-    prompt = Column(Text, nullable=True)
+    analyse_time = Column(Integer, nullable=True)
 
-    output = Column(Text, nullable=True)
-
-    preprocess_time = Column(Integer)
-
-    analyse_time = Column(Integer)
+    total_time = Column(Integer, nullable=True)
