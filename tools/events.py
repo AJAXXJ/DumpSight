@@ -51,7 +51,7 @@ def monitor_core(config):
                 core_path = f"{config.core_dump_dir}/{filename}"
                 log_path = monitor_info["log_path"]
                 timestamp = time.time()
-                
+
                 if exe_path != parsed_info["exe_path"]:
                     logger.warning(f"Executable path mismatch for PID {pid}")
                     continue
@@ -60,9 +60,13 @@ def monitor_core(config):
                 device_binding_status = check_devbind_on_anomaly()
 
                 # run core extractor
-                output_dir = os.path.join(config.core_info_dir, f"{monitor_info['exe_name']}_{timestamp}")
+                output_dir = os.path.join(
+                    config.core_info_dir, f"{monitor_info['exe_name']}_{timestamp}"
+                )
                 os.makedirs(output_dir, exist_ok=True)
-                core_extractor_result = run_core_extractor([core_path, exe_path, log_path], output_dir)
+                core_extractor_result = run_core_extractor(
+                    [core_path, exe_path, log_path], output_dir
+                )
 
                 meta = core_extractor_result["meta"]
                 context = core_extractor_result["context"]
@@ -74,15 +78,14 @@ def monitor_core(config):
                     "process_time": round(end_time - start_time, 4),
                     "device_binding_status": device_binding_status,
                     "meta": meta,
-                    "context": context
+                    "context": context,
                 }
 
                 # set core preprocess info in redis
-                get_monitor_manager().set_preprocess_core_info(preprocess_info)
-                
-                # report crash to server
-                report_crash(config, pid, timestamp)
+                get_monitor_manager().set_preprocess_core_info(pid, preprocess_info)
 
+                # report crash to server
+                # report_crash(config, pid, timestamp)
 
     finally:
         inotify.rm_watch(wd)
@@ -114,9 +117,9 @@ def send_client_heartbeat(config, dpdk_monitor=None):
         batch = dpdk_monitor.flush() if dpdk_monitor is not None else []
         if batch:
             get_monitor_manager().flush_dpdk_batch(batch)
-        else:
-            logger.info("No DPDK batch to flush.")
-        client_heartbeat(config)
+        # else:
+        #     logger.info("No DPDK batch to flush.")
+        # client_heartbeat(config)
 
     schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush)
 
@@ -129,10 +132,11 @@ def sync_instances_loop(config, dpdk_monitor):
     """
     Sync the DPDK monitor with the current running instances at regular intervals.
     """
+
     def _sync():
         dpdk_monitor.sync_instances(get_monitor_manager().read_running_instances_info())
 
-    schedule.every(config.schedule_clean_crashed_core_interval-5).seconds.do(_sync)
+    schedule.every(config.schedule_clean_crashed_core_interval + 5).seconds.do(_sync)
 
     while True:
         schedule.run_pending()

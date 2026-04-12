@@ -1,8 +1,8 @@
 # DumpSight
 
-DumpSight 是一个用于监控和分析 DPDK 应用程序崩溃的工具。它能够实时监控 DPDK 应用程序的运行状态，自动捕获核心转储（core dump）文件，并提供崩溃分析和日志管理功能。
+DumpSight 是一个用于监控和分析 DPDK 应用程序崩溃的工具。它能够实时监控 DPDK 应用程序的运行状态，自动捕获核心转储（core dump）文件，并提供基于大语言模型的智能崩溃分析和日志管理功能。
 
-项目采用客户端-服务器（C/S）架构，基于 Flask Web 框架和 SQLAlchemy ORM，集成 Redis 进行监控数据管理，支持使用大语言模型进行智能分析。
+项目采用客户端-服务器（C/S）架构，基于 Flask Web 框架和 SQLAlchemy ORM，集成 Redis 进行监控数据管理，支持使用大语言模型进行智能分析。Agent 模块采用 LangChain 框架，通过图结构（Graph）实现复杂的分析流程。
 
 ## 功能特性
 
@@ -21,10 +21,13 @@ DumpSight 是一个用于监控和分析 DPDK 应用程序崩溃的工具。它�
 ### 服务器功能
 - **客户端管理**：支持客户端注册、状态查询和心跳接收
 - **核心转储分析**：提供核心转储文件分析接口
-- **LLM 集成**：支持使用大语言模型进行智能分析（基础框架已实现）
+- **LLM 集成**：支持使用大语言模型进行智能分析，包括故障分析和实时监控
 - **数据存储**：集成 MySQL（SQLAlchemy ORM）和 Redis 进行数据持久化
 - **加密解密**：提供客户端密钥加密验证功能
 - **RESTful API**：基于 Flask 提供 RESTful API 接口
+- **Agent 智能分析**：基于 LangChain 的图结构（Graph）实现复杂的分析流程
+- **案例库管理**：支持历史案例的存储和检索
+- **智能报告生成**：自动生成结构化的故障分析报告
 
 ## 项目结构
 
@@ -64,7 +67,53 @@ DPDK/
 │   ├── main.py              # 服务器主程序（Flask 应用）
 │   ├── config.yaml          # 服务器配置文件
 │   ├── agent/               # Agent 模块
-│   │   └── agent_client.py  # LLM Agent 客户端
+│   │   ├── main.py          # Agent 主程序
+│   │   ├── case_library/    # 案例库
+│   │   │   ├── retriever.py      # 案例检索器
+│   │   │   ├── schema.py         # 案例数据模型
+│   │   │   ├── ingestion/        # 案例处理
+│   │   │   │   ├── chunker.py    # 文本分块
+│   │   │   │   ├── embedder.py   # 向量嵌入
+│   │   │   │   └── parse.py      # 案例解析
+│   │   │   ├── metadata_db/      # 元数据数据库
+│   │   │   │   ├── crud.py       # CRUD 操作
+│   │   │   │   ├── models.py     # 数据模型
+│   │   │   │   └── migrations/   # 数据库迁移
+│   │   │   └── vector_store/     # 向量存储
+│   │   │       ├── chroma_client.py  # Chroma 客户端
+│   │   │       └── qdrant_client.py  # Qdrant 客户端
+│   │   ├── config/            # Agent 配置
+│   │   │   ├── llm_factory.py    # LLM 工厂
+│   │   │   └── settings.py      # 设置管理
+│   │   ├── graphs/            # 分析图
+│   │   │   ├── state.py         # 状态定义
+│   │   │   ├── fault_analysis/   # 故障分析图
+│   │   │   │   ├── edges.py     # 边定义
+│   │   │   │   ├── graph.py     # 图构建
+│   │   │   │   └── nodes.py     # 节点定义
+│   │   │   └── live_monitor/    # 实时监控图
+│   │   │       ├── edges.py     # 边定义
+│   │   │       ├── graph.py     # 图构建
+│   │   │       └── nodes.py     # 节点定义
+│   │   ├── output/             # 输出处理
+│   │   │   ├── alter_dispatcher.py  # 报告分发
+│   │   │   ├── case_feedback_writer.py  # 案例反馈写入
+│   │   │   └── report_formatter.py    # 报告格式化
+│   │   ├── prompts/            # 提示词管理
+│   │   │   ├── prompt_builder.py     # 提示词构建器
+│   │   │   ├── prompt_registry.py    # 提示词注册表
+│   │   │   └── versions/             # 版本管理
+│   │   │       ├── v1/
+│   │   │       │   ├── few_shots/    # 少样本示例
+│   │   │       │   │   └── crash_examples.yaml
+│   │   │       │   ├── system/       # 系统提示词
+│   │   │       │   │   └── fault_analyst.md
+│   │   │       │   └── templates/    # 模板
+│   │   │       │       └── fault_analysis.j2
+│   │   │       └── ...
+│   │   ├── tools/              # 工具集
+│   │   │   └── tool_registry.py      # 工具注册表
+│   │   └── ...
 │   ├── controller/          # 控制器层
 │   │   └── client_controller.py  # 客户端相关 API
 │   ├── repository/          # 数据访问层
@@ -105,6 +154,7 @@ DPDK/
 - MySQL 数据库
 - Redis 缓存
 - LLM API（可选，用于智能分析）
+- LangChain（用于 Agent 智能分析）
 
 ## 依赖安装
 
@@ -221,6 +271,8 @@ python main.py
 - `POST /api/client/heartbeat` - 客户端心跳（API 框架已实现，业务逻辑待完善）
 - `GET /api/client/status?client_id=<id>` - 查询客户端状态（API 框架已实现，业务逻辑待完善）
 - `POST /api/client/report_crash` - 核心转储分析（API 框架已实现，业务逻辑部分实现）
+- `POST /api/agent/fault_analysis` - 故障分析（基于 Agent 图结构）
+- `POST /api/agent/live_monitor` - 实时监控分析（基于 Agent 图结构）
 
 ## 项目架构
 
@@ -243,24 +295,35 @@ DumpSight 采用客户端-服务器（C/S）架构，基于 Flask Web 框架和 
 - **数据模型层**：基于 SQLAlchemy ORM 的数据模型定义（BaseModel、ClientInfo、CoreInfo）
 - **LLM Agent**：集成大语言模型进行智能分析（基础框架已实现）
   - LangChain 工具集（tools.py 已实现，包含客户端信息、DPDK 信息、核心转储、日志查询工具）
-- **工具模块**：MySQL 工具、Redis 工具、加密解密工具
+  - Agent 图结构（graphs/）：基于 LangChain Graph 实现复杂的分析流程
+    - 故障分析图（fault_analysis/）：分析崩溃根因、调用链、修复建议
+    - 实时监控图（live_monitor/）：实时监控和分析应用状态
+  - 案例库（case_library/）：支持历史案例的存储和检索
+  - 提示词管理（prompts/）：管理 LLM 分析的提示词模板
+  - 输出处理（output/）：处理分析结果的格式化和分发
 
 ### 数据流
 
 ```
 客户端 (Agent)                    服务器 (Server)
-     |                                  |
-     |  1. 客户端注册                    |
-     |--------------------------------->|
-     |                                  |
-     |  2. 定时心跳                      |
-     |--------------------------------->|
-     |                                  |
-     |  3. 核心转储分析请求              |
-     |--------------------------------->|
-     |                                  |
-     |  4. LLM 智能分析                  |
-     |<---------------------------------|
+       |                                  |
+       |  1. 客户端注册                    |
+       |--------------------------------->|
+       |                                  |
+       |  2. 定时心跳                      |
+       |--------------------------------->|
+       |                                  |
+       |  3. 核心转储分析请求              |
+       |--------------------------------->|
+       |                                  |
+       |  4. LLM 智能分析                  |
+       |<---------------------------------|
+       |  5. 故障分析图处理                |
+       |<---------------------------------|
+       |  6. 案例库检索                   |
+       |<---------------------------------|
+       |  7. 生成分析报告                  |
+       |<---------------------------------|
 ```
 
 ## 配置说明
@@ -387,53 +450,7 @@ bash run.sh
 5. **SQLAlchemy**：服务器使用 SQLAlchemy ORM 进行 MySQL 数据库操作，支持自动创建表结构
 6. **密钥配置**：需要配置 SECRET_KEY 用于客户端密钥验证
 7. **API 接口**：API 框架已实现，但业务逻辑层（client_service.py）仍需完善
-
-## 待实现功能
-
-### 客户端
-- [x] 客户端注册功能
-- [x] 核心转储捕获
-- [x] 心跳机制
-- [x] 守护进程管理
-- [x] Redis 监控管理器集成（RedisMonitorManager）
-- [x] DPDK 工具集（CPU 布局、HugePage、设备绑定、遥测）
-- [x] 核心转储提取器（GDB 分析器、上下文解析、元数据解析）
-- [ ] 崩溃告警通知机制
-
-### 服务器
-- [x] Flask Web 框架搭建
-- [x] 客户端注册接口（API 框架）
-- [x] 心跳接收接口（API 框架）
-- [x] 客户端状态查询接口（API 框架）
-- [x] 核心转储分析接口（API 框架，已集成 service 层）
-- [x] MySQL 工具（SQLAlchemy ORM，支持会话管理和表创建）
-- [x] Redis 工具
-- [x] 加密解密工具
-- [x] LLM Agent 客户端（基础框架）
-- [x] 客户端服务层（部分实现，密钥验证逻辑已实现）
-- [x] 数据模型层（BaseModel 基类，包含 create_time、update_time、to_dict、create、get、filter、page 方法）
-- [x] 客户端数据模型（ClientInfo，包含 client_id、dpdk_context 字段）
-- [x] 核心转储数据模型（CoreInfo，包含 client_id、pid、timestamp、prompt、output、preprocess_time、analyse_time 字段）
-- [x] MySQL 数据访问层（client_repository.py，包含 add_client_info、get_client_info、page_client_info 方法）
-- [x] Redis 数据访问层（client_redis.py，包含 get_dpdk_info、get_dpdk_core_info、get_dpdk_log、get_dpdk_log_both 方法）
-- [x] LangChain 工具集（tools.py，包含 get_client_info_tool、get_dpdk_info_tool、get_dpdk_core_info_tool、get_dpdk_log_both_tool）
-- [ ] 客户端注册业务逻辑完善（调用 repository 层进行数据持久化）
-- [ ] 心跳数据持久化（MySQL）
-- [ ] 心跳业务逻辑实现
-- [ ] 客户端状态查询业务逻辑实现
-- [ ] 核心转储分析逻辑完善（集成 LLM Agent 和核心转储提取器）
-- [ ] LLM 智能分析集成（analyse_poll_secends、analyse_dump_core）
-- [ ] Web 管理界面
-- [ ] 告警通知机制
-- [ ] API 接口完整实现（当前仅返回基础响应）
-
-## 许可证
-
-请根据项目实际情况添加许可证信息。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
+8. **Agent 模块**：需要配置 LLM API 和案例库才能使用完整的智能分析功能
 
 ## 开发状态
 
@@ -448,6 +465,12 @@ bash run.sh
 - Redis 数据访问层（client_redis.py）已实现，支持 DPDK 信息、核心转储、日志查询
 - LangChain 工具集（tools.py）已实现，包含客户端信息、DPDK 信息、核心转储、日志查询工具
 - 服务层（client_service.py）部分实现，密钥验证逻辑已实现，核心转储分析服务已集成 Redis 数据访问
+- Agent 模块基础框架已实现，包括：
+  - 故障分析图（fault_analysis/）：基于 LangChain Graph 实现崩溃分析流程
+  - 实时监控图（live_monitor/）：基于 LangChain Graph 实现实时监控分析
+  - 案例库（case_library/）：支持历史案例的存储和检索
+  - 提示词管理（prompts/）：管理 LLM 分析的提示词模板
+  - 输出处理（output/）：处理分析结果的格式化和分发
 
 ### 待完善功能
 - API 接口业务逻辑仍需完善（注册、心跳、状态查询）
@@ -455,8 +478,17 @@ bash run.sh
 - 控制器层（client_controller.py）API 框架已实现，但与 service 层的集成待完善
 - 仪表板服务（dashborad_service.py）待实现
 - Agent 技能模块（server/agent/skill/）待实现
+- Web 管理界面待实现
+- 告警通知机制待实现
+
+## 许可证
+
+请根据项目实际情况添加许可证信息。
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 联系方式
 
 请根据项目实际情况添加联系方式。
-

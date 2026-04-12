@@ -1,33 +1,42 @@
-Analyze the following DPDK crash scenario:
+分析以下 DPDK 崩溃场景：
 
-Client Info:
+客户端信息：
 {{ client_info }}
 
-DPDK Info:
+DPDK 信息：
 {{ dpdk_info }}
 
-Crash Stack:
-{{ crash_stack }}
+崩溃 core gdb 分析信息：
+{{ core_info }}
 
 {% if similar_cases %}
-Similar Historical Cases:
+相似历史案例：
 {% for case in similar_cases %}
-- Case ID: {{ case.id }} | Summary: {{ case.summary }}
+- 案例 ID: {{ case.id }} | 摘要: {{ case.summary }}
 {% endfor %}
 {% endif %}
-
-Extra Context:
-{{ extra_context }}
 
 {% if few_shots %}
-Examples for reference:
+参考示例：
 {% for shot in few_shots %}
-Input: {{ shot.input }}
-Output: {{ shot.output }}
+输入：{{ shot.input }}
+输出：{{ shot.output }}
 {% endfor %}
 {% endif %}
 
-Provide a structured analysis including:
-1. Likely root cause
-2. Severity assessment
-3. Suggested repair steps
+请分析 DPDK 崩溃原因，并严格以 JSON 格式输出。
+
+必须遵循以下 JSON Schema：
+
+{
+  "root_cause": "string",
+  "call_chain": ["string"],
+  "confidence": "high | medium | low",
+  "repair_steps": ["string"]
+}
+
+要求：
+- 只输出 JSON，不要输出任何额外文本
+- 所有字段必须存在
+- repair_steps 和 call_chain 必须是数组
+- confidence 只能是 high / medium / low

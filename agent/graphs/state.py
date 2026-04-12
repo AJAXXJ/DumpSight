@@ -5,28 +5,6 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
 
-class ClientInfo(TypedDict, total=False):
-    client_id:    str
-    dpdk_version: str
-    os:           str
-    hostname:     str
-    uptime_sec:   int
-
-
-class DPDKInfo(TypedDict, total=False):
-    port_count:   int
-    lcore_list:   list[int]
-    mem_channels: int
-    huge_pages:   dict[str, int]
-    eal_args:     list[str]
-
-
-class RetrievedCase(TypedDict, total=False):
-    case_id:      str
-    root_cause:   str
-    fix_summary:  str
-    score:        float
-    dpdk_version: str
 
 
 class AlertPayload(TypedDict, total=False):
@@ -66,19 +44,21 @@ class DPDKDiagnosisState(TypedDict, total=False):
     timestamp:        int
 
     # 拉取数据
-    client_info:      ClientInfo     # 客户端信息
-    dpdk_info:        DPDKInfo       # dpdk 实例信息
+    client_info:      dict[str, Any]     # 客户端信息
+    dpdk_info:        dict[str, Any]       # dpdk 实例信息
     core_info:        dict[str, Any] # crash core 信息
     metrics_1s:       dict[str, Any] # 1s 周期指标快照
     metrics_5s:       dict[str, Any] # 5s 周期聚合指标
+    baseline:         dict[str, Any] 
 
     # 中间
-    retrieved_cases:  list[RetrievedCase]   # 案例库检索结果
+    retrieved_cases:  list[dict[str, Any]]   # 案例库检索结果
     anomaly_flags:    list[str]      # 触发的异常标志列表
     root_cause:       str            # LLM 输出的根因判断
     confidence:       Literal["high", "medium", "low"]
     call_chain:       list[str]      # 从堆栈还原的关键调用帧
-
+    alert_rules:      list[AlertPayload]
+    
     # 输出
     repair_steps:     list[str]      # 修复建议（有序列表）
     report:           str            # 最终故障报告（Markdown）

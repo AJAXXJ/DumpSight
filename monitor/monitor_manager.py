@@ -77,6 +77,7 @@ class RedisMonitorManager:
 
         get_redis_util().set(self._info_key(pid), json.dumps(info))
 
+
     def set_pid_status(self, pid, status):
         """
         Set the status of a specific PID.
@@ -90,6 +91,7 @@ class RedisMonitorManager:
         info["status"] = status
         get_redis_util().set(self._info_key(pid), json.dumps(info))
         return info
+
 
     def clean_status_info(self, status):
         """
@@ -129,16 +131,18 @@ class RedisMonitorManager:
         if keys_to_delete:
             get_redis_util().delete_many(keys_to_delete)
 
-    def set_preprocess_core_info(self, preprocess_info):
+
+    def set_preprocess_core_info(self, pid, preprocess_info):
         """
         Set preprocess dump core info in redis.
         """
-        pid = str(preprocess_info.get("pid"))
+        pid = str(pid)
         timestamp = int(preprocess_info.get("timestamp", time.time()))
         ttl = getattr(self.config, "core_info_ttl", None)
 
         key = f"{self.client_id}:core:{pid}:{timestamp}"
         get_redis_util().set(key, json.dumps(preprocess_info), expire=ttl)
+
 
     def flush_dpdk_batch(self, batch):
         """
@@ -170,12 +174,9 @@ class RedisMonitorManager:
             instances.append(
                 {
                     "pid": pid,
-                    "start_time": info.get("start_time"),
                     "exe_name": info.get("exe_name"),
-                    "exe_path": info.get("exe_path"),
                     "file_prefix": info.get("file_prefix"),
                     "instance": info.get("instance"),
-                    "log_path": info.get("log_path"),
                 }
             )
         return instances

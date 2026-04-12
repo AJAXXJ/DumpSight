@@ -1,210 +1,114 @@
 import os
 from pathlib import Path
+import subprocess
+
+from monitor.coredump_extractor.tools.mismatch_pattern import assess_symbol_status
+from tools.utils import parse_core_filename
 
 from .extractor.context_parser import parse_gdb_context
 from .extractor.meta_parser import parse_gdb_output
-from .constant import SIGNAL_MAP, GDB_TIMEOUT
+from tools.constant import _GDB_COMMANDS, GDB_TIMEOUT
 from .utils import safe_run
 
 
-def parse_core_filename(filename):
+def extract_ldd_paths(exe_path):
     """
-    解析格式 core.<exe>.<pid>.<tid>.<signal>.<timestamp>.<encoded_path>
+    解析动态链接库路径
     """
-    parts = filename.split(".", 6)
+    result = subprocess.run(
+        ["ldd", exe_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
 
-    if len(parts) < 7:
-        raise ValueError(f"Invalid core filename: {filename}")
+    paths = set()
 
-    _, exe_name, pid, tid, signal, ts, encoded_path = parts
-    exe_path = encoded_path.replace("!", "/")
-    if not exe_path.startswith("/"):
-        exe_path = "/" + exe_path
+    for line in result.stdout.splitlines():
+        line = line.strip()
 
-    return {
-        "exe_name": exe_name,
-        "pid": int(pid),
-        "tid": int(tid),
-        "signal": int(signal),
-        "signal_name": SIGNAL_MAP.get(int(signal), "UNKNOWN"),
-        "timestamp": int(ts),
-        "exe_path": exe_path,
-        "exe_exists": os.path.exists(exe_path),
-    }
+        # 跳过 linux-vdso 这种
+        if "=>" not in line:
+            continue
+
+        parts = line.split("=>")
+        if len(parts) < 2:
+            continue
+
+        right = parts[1].strip()
+
+        # 取路径部分（去掉地址）
+        lib_path = right.split("(")[0].strip()
+
+        if os.path.isabs(lib_path) and os.path.exists(lib_path):
+            paths.add(os.path.dirname(lib_path))
+
+    return list(paths)
 
 
 def parse_core(exe_path, core_file):
     """
-    解析 core 文件并输出重要信息
+    构建 gdb 命令并运行，返回原始结果
     """
-    commands = [
-        "set print frame-arguments all",      # 调用栈增强
-
-        "echo === INFO_THREADS_BEGIN ===\\n",
-        "info threads",
-        "echo === INFO_THREADS_END ===\\n",
-
-        "echo === THREAD_BT_BEGIN ===\\n",
-        "thread apply all bt 5",              # 所有线程打印调用栈 最多5层
-        "echo === THREAD_BT_END ===\\n",
-
-        "echo === BT_FULL_BEGIN ===\\n",
-        "bt full",                            # 当前线程深度分析
-        "echo === BT_FULL_END ===\\n",
-
-        "echo === REGISTERS_BEGIN ===\\n",
-        "info registers",                     # 寄存器分析
-        "echo === REGISTERS_END ===\\n",
-
-        "echo === RSP_BEGIN ===\\n",
-        "x/4xg $rsp",                         # 查看栈顶内容
-        "echo === RSP_END ===\\n",
-
-        "echo === RBP_BEGIN ===\\n",
-        "x/4xg $rbp",                         # 查看栈帧基地址
-        "echo === RBP_END ===\\n",
-
-        "echo === SHARED_BEGIN ===\\n",
-        "info shared",                        # 共享库信息
-        "echo === SHARED_END ===\\n",
-
-        "echo === ARGS_BEGIN ===\\n",
-        "show args",                          # 启动参数
-        "echo === ARGS_END ===\\n",
-
-        "echo === MAPPINGS_BEGIN ===\\n",
-        "info proc mappings",                 # 内存布局
-        "echo === MAPPINGS_END ===\\n",
-    ]
-
     cmd = ["gdb", "--batch", "--quiet"]
-    if exe_path:
-        exe_parent = str(Path(exe_path).resolve().parent)
-        cmd.extend(["-ex", f"set solib-search-path {exe_parent}"])
-    for c in commands:
+    # 获取动态链接库路径
+    exe_parent = str(Path(exe_path).resolve().parent)
+
+    ldd_paths = extract_ldd_paths(exe_path)
+
+    all_paths = set(ldd_paths)
+    all_paths.add(exe_parent)
+
+    cmd.extend(["-ex", f"set solib-search-path {':'.join(all_paths)}"])
+
+    for c in _GDB_COMMANDS:
         cmd.extend(["-ex", c])
-    if exe_path:
-        cmd.append(exe_path)
+
+    cmd.append(exe_path)
     cmd.append(core_file)
 
     return safe_run(cmd, timeout=GDB_TIMEOUT)
 
 
-def build_meta(core_file, exe_path=None):
+def build_meta(core_file):
     """
-    仅构造 meta 基础字段，不做 IO
+    构造 meta 基础字段
     """
-    try:
-        file_info = parse_core_filename(os.path.basename(core_file))
-    except Exception:
-        file_info = {
-            "exe_name": Path(exe_path).name if exe_path else None,
-            "pid": None,
-            "tid": None,
-            "signal": None,
-            "signal_name": "UNKNOWN",
-            "timestamp": None,
-            "exe_path": exe_path,
-            "exe_exists": bool(exe_path and os.path.exists(exe_path)),
-        }
-
-    if exe_path:
-        file_info["exe_path"] = exe_path
-        file_info["exe_exists"] = os.path.exists(exe_path)
-        file_info["exe_name"] = file_info.get("exe_name") or Path(exe_path).name
+    file_info = parse_core_filename(os.path.basename(core_file))
 
     return {
-        "core_file": core_file,
-        "exe_name": file_info.get("exe_name"),
-        "exe_path": file_info.get("exe_path"),
-        "exe_exists": file_info.get("exe_exists", False),
+        "pid": file_info.get("pid"),
+        "tid": file_info.get("tid"),
         "signal": file_info.get("signal"),
         "signal_name": file_info.get("signal_name", "UNKNOWN"),
-        "tid": file_info.get("tid"),
-        "pid": file_info.get("pid"),
-        "timestamp": file_info.get("timestamp"),
     }
 
 
-def assess_symbol_status(returncode, stderr):
+def analyze_core(core_file, exe_path):
     """
-    评估符号可信度：
-    - ok / mismatch / partial / unknown
+    编排 gdb 解析流程并返回 meta dict
     """
-    warnings = []
-    status = "ok"
+    meta = build_meta(core_file)
+    parsed_info = parse_core(exe_path, core_file)
 
-    err = (stderr or "").strip()
-    err_lower = err.lower()
-
-    # 明确的符号不匹配信号
-    mismatch_patterns = [
-        "build-id" in err_lower and "does not match core file" in err_lower,
-        "wrong library or version mismatch" in err_lower,
-    ]
-    if any(mismatch_patterns):
-        status = "mismatch"
-        if "build-id" in err_lower and "does not match core file" in err_lower:
-            warnings.append("build_id_mismatch")
-        if "wrong library or version mismatch" in err_lower:
-            warnings.append("library_version_mismatch")
-
-    # gdb 非零退出，可信度降低
-    if returncode is None:
-        if status == "ok":
-            status = "unknown"
-        warnings.append("gdb_returncode_unknown")
-    elif returncode != 0:
-        if status == "ok":
-            status = "partial"
-        warnings.append(f"gdb_returncode_{returncode}")
-
-    return status, warnings
-
-
-def analyze_core(core_file, exe_path=None):
-    """
-    编排 gdb 解析流程并返回 meta dict（不写文件）
-    """
-    meta = build_meta(core_file, exe_path=exe_path)
-    result = parse_core(meta.get("exe_path"), core_file)
-
-    parsed = parse_gdb_output(result.stdout or "")
-    meta["parsed_gdb_output"] = parsed
-    meta["gdb"] = {
-        "returncode": result.returncode,
-        "stderr": (result.stderr or "").strip(),
-    }
-
-    symbol_status, symbol_warnings = assess_symbol_status(
-        result.returncode,
-        result.stderr or "",
+    parsed_status, parsed_warnings = assess_symbol_status(
+        parsed_info.returncode, parsed_info.stderr
     )
-    meta["symbol_status"] = symbol_status
-    meta["symbol_warnings"] = symbol_warnings
 
-    # shared_libs 语义增强：保留原字段，同时避免 symbol 非 ok 时出现强肯定措辞
-    shared_libs = parsed.get("shared_libs")
-    consistency = "ok" if symbol_status == "ok" else ("mismatch" if symbol_status == "mismatch" else "unknown")
-    if isinstance(shared_libs, dict):
-        shared_libs["consistency"] = consistency
-        if symbol_status != "ok" and shared_libs.get("info") == "All critical libraries are loaded":
-            shared_libs["info"] = "Critical libraries detected, but symbol consistency is not fully reliable"
+    parsed = parse_gdb_output(parsed_info.stdout or "")
+
+    meta.update(
+        {
+            "parsed_gdb_output": parsed,
+            "parsed_status": parsed_status,
+            "parsed_warnings": parsed_warnings,
+        }
+    )
 
     return meta
 
 
-def collect_context(pid, log_path=None):
-    """
-    编排上下文采集并返回 context dict（不写文件）
-    """
-    return parse_gdb_context(pid, {}, log_path=log_path)
-
-
-def analyze_core_dump(core_file, exe_path=None, log_path=None):
+def analyze_core_dump(core_file, exe_path, log_path):
     """
     统一编排入口：返回 meta/context 两类数据
     """
-    meta = analyze_core(core_file, exe_path=exe_path)
-    context = collect_context(meta.get("pid"), log_path=log_path)
+    meta = analyze_core(core_file, exe_path)
+    context = parse_gdb_context(meta.get("pid"), {}, log_path=log_path)
     return meta, context

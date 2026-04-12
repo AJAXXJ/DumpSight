@@ -1,0 +1,72 @@
+{# ============================================================
+   anomaly_detection.j2
+   输入变量:
+     - metrics_1s  : dict   1s 周期指标快照
+     - metrics_5s  : dict   5s 周期聚合指标
+     - baseline    : dict   正常基线值
+     - alert_rules : list   已配置的预警规则
+     - few_shots   : list   示例对 [{input, output}]
+   ============================================================ #}
+
+{% if few_shots %}
+# 参考示例
+
+{% for shot in few_shots %}
+## 示例 {{ loop.index }}
+
+输入指标:
+{{ shot.input }}
+
+分析输出:
+{{ shot.output }}
+
+---
+{% endfor %}
+{% endif %}
+
+# 当前指标数据
+
+## 1s 实时快照
+
+大页内存剩余  : {{ metrics_1s.dpdk.hugepage_free_mb | default('N/A') }} MB
+端口丢包率    : {{ metrics_1s.dpdk.port_drop_rate_pct | default('N/A') }} %
+RX 队列填充率 : {{ metrics_1s.dpdk.rx_queue_fill_pct | default('N/A') }} %
+TX 队列停滞数 : {{ metrics_1s.dpdk.tx_queue_stall_count | default('N/A') }}
+逻辑核心忙碌率: {{ metrics_1s.dpdk.lcore_busy_pct | default('N/A') }} %
+mbuf 分配失败 : {{ metrics_1s.dpdk.mbuf_alloc_fail_count | default('N/A') }}
+RX 错误计数   : {{ metrics_1s.dpdk.rx_error_count | default('N/A') }}
+
+## 5s 聚合趋势
+
+大页内存剩余  : {{ metrics_5s.dpdk.hugepage_free_mb | default('N/A') }} MB
+端口丢包率    : {{ metrics_5s.dpdk.port_drop_rate_pct | default('N/A') }} %
+RX 错误计数   : {{ metrics_5s.dpdk.rx_error_count | default('N/A') }}
+
+## 正常基线（对比参考）
+
+大页内存基线  : {{ baseline.hugepage_free_mb | default('N/A') }} MB
+丢包率基线    : {{ baseline.port_drop_rate_pct | default('N/A') }} %
+核心忙碌率基线: {{ baseline.lcore_busy_pct | default('N/A') }} %
+RX 队列基线   : {{ baseline.rx_queue_fill_pct | default('N/A') }} %
+
+## 已配置告警规则（供参考）
+{% for rule in alert_rules %}
+- {{ rule.id }}: {{ rule.name }}（阈值 {{ rule.condition }} {{ rule.threshold }}，严重度 {{ rule.severity }}）
+{% endfor %}
+
+# 任务
+
+请完成以下分析，严格按照输出格式回答：
+
+**第一步：逐项核查**
+对比当前指标与基线，判断每个维度是否存在异常。重点关注组合型信号：
+- mbuf 分配失败 + 大页内存快速下降 → 崩溃前驱
+- TX 停滞 + 丢包率上升 → 发送链路阻塞
+- 核心忙碌率 > 95% + RX 队列接近满 → 处理能力瓶颈
+
+**第二步：输出结论**
+严格按以下格式输出，不添加其他内容：
+
+ANOMALIES: <触发的规则 ID 列表，逗号分隔，无异常则写 NONE>
+ESCALATE: <yes 或 no，yes 表示需要立即触发完整故障分析>
+REASON: <一句话说明判断依据，不超过 60 字>

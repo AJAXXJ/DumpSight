@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import JSON, Column, Integer, String, Text
 
 from server.models.base_model import BaseModel
 
@@ -13,7 +13,7 @@ class CoreInfo(BaseModel):
 
     client_info_id = Column(Integer, nullable=True)
 
-    crash_report = Column(String(255), nullable=True)
+    crash_report = Column(JSON, nullable=True)
 
     process_time = Column(Integer, nullable=True)
 

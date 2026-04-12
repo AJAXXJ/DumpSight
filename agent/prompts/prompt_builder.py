@@ -71,9 +71,8 @@ class PromptBuilder:
         *,
         client_info,
         dpdk_info,
-        crash_stack,
-        similar_cases,
-        extra_context,
+        core_info,
+        similar_cases
     ):
         """
         构建故障根因分析 prompt。
@@ -84,9 +83,8 @@ class PromptBuilder:
         variables = {
             "client_info": client_info,
             "dpdk_info": dpdk_info,
-            "crash_stack": crash_stack,
+            "core_info": core_info,
             "similar_cases": similar_cases,
-            "extra_context": extra_context,
             "few_shots": self._get_few_shots("crash_examples"),
         }
         return self._build(
@@ -101,12 +99,12 @@ class PromptBuilder:
         *,
         root_cause,
         dpdk_version,
-        crash_context,
+        call_chain,
     ):
         variables = {
             "root_cause": root_cause,
             "dpdk_version": dpdk_version,
-            "crash_context": crash_context,
+            "call_chain": call_chain,
             "few_shots": self._get_few_shots("repair_examples"),
         }
         return self._build(

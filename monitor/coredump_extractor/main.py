@@ -4,7 +4,7 @@ from pathlib import Path
 from tools.logger import logger
 
 from .analyzer import analyze_core_dump
-from .constant import FILE_STABLE_TIMEOUT
+from tools.constant import FILE_STABLE_TIMEOUT
 from .utils import wait_file_stable, is_probable_executable
 
 

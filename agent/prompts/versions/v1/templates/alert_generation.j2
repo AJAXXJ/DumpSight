@@ -1,0 +1,53 @@
+{# ============================================================
+   alert_generation.j2
+   输入变量:
+     - anomaly_summary  : str   触发的规则 ID 列表（逗号分隔）
+     - severity         : str   critical | warning | info
+     - client_id        : str   客户端标识
+     - metrics_snapshot : dict  触发时刻的 1s 指标快照
+     - few_shots        : list  始终为空（告警生成不使用示例）
+   ============================================================ #}
+
+{# ── 严重度中文映射 ─────────────────────────────────────── #}
+{% set severity_cn = {
+    "critical": "紧急",
+    "warning":  "警告",
+    "info":     "提示"
+} %}
+
+{% set severity_emoji = {
+    "critical": "🔴",
+    "warning":  "🟡",
+    "info":     "🔵"
+} %}
+
+# 当前告警上下文
+
+## 基本信息
+- 客户端 ID : {{ client_id }}
+- 严重度    : {{ severity_cn[severity] }}（{{ severity }}）
+- 触发规则  : {{ anomaly_summary }}
+
+## 触发时刻指标快照
+
+大页内存剩余  : {{ metrics_snapshot.dpdk.hugepage_free_mb | default('N/A') }} MB
+端口丢包率    : {{ metrics_snapshot.dpdk.port_drop_rate_pct | default('N/A') }} %
+RX 队列填充率 : {{ metrics_snapshot.dpdk.rx_queue_fill_pct | default('N/A') }} %
+TX 队列停滞数 : {{ metrics_snapshot.dpdk.tx_queue_stall_count | default('N/A') }}
+逻辑核心忙碌率: {{ metrics_snapshot.dpdk.lcore_busy_pct | default('N/A') }} %
+mbuf 分配失败 : {{ metrics_snapshot.dpdk.mbuf_alloc_fail_count | default('N/A') }}
+
+# 任务
+
+根据以上上下文，生成一条结构化告警通知，供推送。
+
+要求：
+- 标题简洁，不超过 30 字，包含严重度和客户端标识
+- 描述说明"什么指标异常、异常程度、可能影响"，不超过 80 字
+- 语气专业、直接，不使用"可能""也许"等模糊表述（紧急级别）
+- warning 级别可适当缓和，info 级别用陈述句
+
+严格按以下格式输出，不添加其他内容：
+
+TITLE: {{ severity_emoji[severity] }}【{{ severity_cn[severity] }}】<标题正文>
+DESCRIPTION: <描述正文>

@@ -1,0 +1,135 @@
+# 实时预警规则配置。
+# 每条规则由 realtime_monitor Graph 的异常检测节点加载并执行。
+#
+# 字段说明:
+#   id          : 规则唯一标识，写入告警日志用于溯源
+#   name        : 人类可读名称
+#   severity    : critical | warning | info
+#   metric      : 对应 metrics_1s / metrics_5s 中的字段路径（点分隔）
+#   source      : 1s | 5s，指定从哪个周期的指标取值
+#   condition   : gt | lt | gte | lte | eq | delta_pct（相对基线变化百分比）
+#   threshold   : 触发阈值
+#   cooldown_sec: 同一客户端该规则的冷却时间（秒），覆盖全局设置
+#   description : 告警说明，注入 alert_generation.j2 模板
+#   enabled     : false 可临时关闭规则而不删除
+
+rules:
+
+  # 内存类
+  - id: MEM_HUGEPAGE_LOW
+    name: 大页内存不足
+    severity: critical
+    metric: dpdk.hugepage_free_mb
+    source: 1s
+    condition: lt
+    threshold: 512
+    cooldown_sec: 120
+    description: >
+      DPDK 可用大页内存低于 512 MB，可能导致内存分配失败并引发崩溃。
+      请检查是否存在内存泄漏或大页配置不足。
+    enabled: true
+
+  - id: MEM_HUGEPAGE_DELTA
+    name: 大页内存快速消耗
+    severity: warning
+    metric: dpdk.hugepage_free_mb
+    source: 5s
+    condition: delta_pct
+    threshold: -20          # 5s 内下降超过 20%
+    cooldown_sec: 60
+    description: >
+      5s 内大页内存消耗超过 20%，存在内存泄漏风险。
+    enabled: true
+
+  # 丢包类
+  - id: PKT_DROP_RATE_HIGH
+    name: 端口丢包率过高
+    severity: critical
+    metric: dpdk.port_drop_rate_pct
+    source: 1s
+    condition: gt
+    threshold: 5.0          # 丢包率超过 5%
+    cooldown_sec: 30
+    description: >
+      DPDK 端口丢包率超过 5%，网络性能严重劣化。
+      请检查 RX 队列深度、CPU 核心负载及网卡驱动状态。
+    enabled: true
+
+  - id: PKT_DROP_RATE_WARN
+    name: 端口丢包率警告
+    severity: warning
+    metric: dpdk.port_drop_rate_pct
+    source: 5s
+    condition: gt
+    threshold: 1.0
+    cooldown_sec: 60
+    description: >
+      DPDK 端口丢包率持续超过 1%，建议排查队列配置。
+    enabled: true
+
+  # CPU 类
+  - id: CPU_LCORE_BUSY
+    name: 逻辑核心占用率过高
+    severity: warning
+    metric: dpdk.lcore_busy_pct
+    source: 1s
+    condition: gt
+    threshold: 95.0
+    cooldown_sec: 30
+    description: >
+      DPDK 逻辑核心（lcore）忙碌率超过 95%，可能导致报文处理延迟。
+      建议检查是否有任务绑核冲突或 busy-poll 循环异常。
+    enabled: true
+
+  # 队列类
+  - id: RX_QUEUE_FULL
+    name: RX 队列接近满载
+    severity: warning
+    metric: dpdk.rx_queue_fill_pct
+    source: 1s
+    condition: gt
+    threshold: 90.0
+    cooldown_sec: 30
+    description: >
+      RX 队列填充率超过 90%，即将发生丢包。
+      建议增大队列深度或提高处理线程优先级。
+    enabled: true
+
+  - id: TX_QUEUE_STALL
+    name: TX 队列停滞
+    severity: critical
+    metric: dpdk.tx_queue_stall_count
+    source: 1s
+    condition: gt
+    threshold: 0
+    cooldown_sec: 15
+    description: >
+      TX 队列出现停滞（stall），数据包发送阻塞。
+      通常由下游拥塞或网卡硬件故障引起。
+    enabled: true
+
+  # 错误计数类
+  - id: RX_ERROR_SPIKE
+    name: RX 错误数突增
+    severity: warning
+    metric: dpdk.rx_error_count
+    source: 5s
+    condition: delta_pct
+    threshold: 50           # 5s 内增长超过 50%
+    cooldown_sec: 60
+    description: >
+      RX 错误计数 5s 内增长超过 50%，可能存在链路质量问题或驱动异常。
+    enabled: true
+
+  - id: MBUF_ALLOC_FAIL
+    name: mbuf 分配失败
+    severity: critical
+    metric: dpdk.mbuf_alloc_fail_count
+    source: 1s
+    condition: gt
+    threshold: 0
+    cooldown_sec: 15
+    description: >
+      mbuf 内存池分配失败，下一步极可能发生崩溃。
+      立即检查内存池大小配置（--mbuf-pool-size）。
+    enabled: true

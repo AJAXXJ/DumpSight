@@ -1,12 +1,29 @@
 import os
 import re
-import logging
 
-from ..constant import KEY_LS_CPU, COLLECT_TIMEOUT, APP_LOG_TAIL_LINES
+from tools.constant import APP_LOG_INIT_LINES, KEY_LS_CPU, COLLECT_TIMEOUT, APP_LOG_TAIL_LINES
 from ..utils import safe_run, safe_read_text
 
-logger = logging.getLogger(__name__)
 
+_NIC_SECTION_MAP = {
+    "network devices using dpdk-compatible driver": "network",
+    "network devices using kernel driver":          "network",
+    "network devices":                              "network",
+    "baseband":                                     "baseband",
+    "crypto":                                       "crypto",
+    "dma":                                          "dma",
+    "eventdev":                                     "eventdev",
+    "mempool":                                      "mempool",
+    "compress":                                     "compress",
+    "misc":                                         "misc",
+    "regex":                                        "regex",
+    "ml":                                           "ml",
+}
+
+_HUGEPAGE_PATHS = {
+    "2M": "/sys/kernel/mm/hugepages/hugepages-2048kB",
+    "1G": "/sys/kernel/mm/hugepages/hugepages-1048576kB",
+}
 
 def extract_proc_info(pid, context):
     """
@@ -18,37 +35,42 @@ def extract_proc_info(pid, context):
         return
 
     proc_dir = f"/proc/{pid}"
-    if os.path.exists(proc_dir):
-        context["proc_snapshot_available"] = True
-        logger.info(f"收集进程 {pid} 的上下文信息")
-        context["cmdline"] = (safe_read_text(f"{proc_dir}/cmdline") or "").replace("\x00", " ")
-        context["maps"] = safe_read_text(f"{proc_dir}/maps") or ""
-        context["status"] = safe_read_text(f"{proc_dir}/status") or ""
-        context["limits"] = safe_read_text(f"{proc_dir}/limits") or ""
-    else:
+    if not os.path.exists(proc_dir):
         context["proc_snapshot_available"] = False
         context["proc_info"] = f"/proc/{pid} not found"
+        return
+
+    context["proc_snapshot_available"] = True
+    context["cmdline"] = (safe_read_text(f"{proc_dir}/cmdline") or "").replace("\x00", " ")
+    context["maps"] = safe_read_text(f"{proc_dir}/maps") or ""
+    context["status"] = safe_read_text(f"{proc_dir}/status") or ""
+    context["limits"] = safe_read_text(f"{proc_dir}/limits") or ""
 
 
 def extract_dpdk_hugepage(context):
     """
     提取 DPDK hugepage 状态
-    """
-    logger.info("收集 DPDK hugepage 状态")
-    path_2m = "/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
-    path_1g = "/sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages"
-
-    if os.path.exists(path_2m):
-        context["hugepages_2M"] = (safe_read_text(path_2m) or "").strip()
-    if os.path.exists(path_1g):
-        context["hugepages_1G"] = (safe_read_text(path_1g) or "").strip()
+    """    
+    hp = {}
+    for size, base in _HUGEPAGE_PATHS.items():
+        total = safe_read_text(f"{base}/nr_hugepages")
+        free  = safe_read_text(f"{base}/free_hugepages")
+        if total is not None:
+            hp[f"hugepages_{size}"] = {
+                "total": (total or "").strip(),
+                "free":  (free  or "").strip(),
+            }
+    if hp:
+        context["hugepages"] = hp
 
     meminfo_text = safe_read_text("/proc/meminfo")
     if meminfo_text:
         context["meminfo"] = {
-            line.split(":")[0]: line.split(":", 1)[1].strip()
+            parts[0].strip(): parts[1].strip()
             for line in meminfo_text.splitlines()
-            if ":" in line and any(k in line for k in ["HugePages", "MemFree", "MemAvailable"])
+            if ":" in line
+            for parts in [line.split(":", 1)]
+            if any(k in parts[0] for k in ["HugePages", "MemFree", "MemAvailable"])
         }
 
 
@@ -56,7 +78,6 @@ def extract_cpu_topology(context):
     """
     提取 CPU/NUMA 拓扑信息
     """
-    logger.info("收集 CPU/NUMA 拓扑信息")
     r = safe_run(["lscpu"], timeout=COLLECT_TIMEOUT)
     if r.returncode != 0:
         context["lscpu"] = {"info": "lscpu unavailable", "stderr": (r.stderr or "").strip()}
@@ -73,113 +94,215 @@ def extract_cpu_topology(context):
     context["lscpu"] = filtered
 
 
+def parse_nic_status(raw: str) -> dict:
+    """
+    将 dpdk-devbind.py --status 的原始输出解析为结构化字典。
+    
+    返回格式：
+    {
+        "network": [{"pci": "0000:00:05.0", "desc": "Virtio network device 1000",
+                     "if": "eth0", "drv": "virtio-pci", "unused": "vfio-pci", "active": True}],
+        "baseband": [],
+        "crypto": [],
+        ...
+    }
+    """
+    result = {v: [] for v in dict.fromkeys(_NIC_SECTION_MAP.values())}
+
+    current = None
+
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or re.match(r"^=+$", line):
+            continue
+
+        # 匹配段落标题
+        lower = line.lower()
+        matched_section = next(
+            (key for key in _NIC_SECTION_MAP if key in lower), None
+        )
+        if matched_section:
+            current = _NIC_SECTION_MAP[matched_section]
+            continue
+
+        # 跳过 "No xxx devices detected"
+        if line.lower().startswith("no ") and "detected" in line.lower():
+            continue
+
+        # 解析设备行：0000:00:05.0 'desc' if=eth0 drv=xxx unused=yyy *Active*
+        if current is None:
+            continue
+
+        m = re.match(r"^([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f])\s+'([^']+)'(.*)$", line)
+        if not m:
+            continue
+
+        pci, desc, rest = m.group(1), m.group(2), m.group(3)
+        dev = {
+            "pci":    pci,
+            "desc":   desc,
+            "if":     _kv(rest, "if"),
+            "drv":    _kv(rest, "drv"),
+            "unused": _kv(rest, "unused"),
+            "active": "*Active*" in rest,
+        }
+        result[current].append(dev)
+
+    return result
+
+
+def _kv(text: str, key: str) -> str:
+    """从 'key=value' 格式的字符串中提取 value，找不到返回空字符串。"""
+    m = re.search(rf"{key}=(\S+)", text)
+    return m.group(1) if m else ""
+
+
 def extract_nic_status(context):
-    """
-    提取网卡和 PMD 状态
-    """
-    logger.info("收集网卡和 PMD 状态")
+    """提取网卡和 PMD 状态"""
     r = safe_run(["dpdk-devbind.py", "--status"], timeout=COLLECT_TIMEOUT)
-    if r.returncode == 0:
-        context["nic_status"] = r.stdout
-    else:
-        context["nic_status"] = "dpdk-devbind.py unavailable"
+    if r.returncode != 0:
+        context["nic_status"] = {"error": "dpdk-devbind.py unavailable"}
+        return
+
+    context["nic_status"] = parse_nic_status(r.stdout)
 
 
-def _parse_app_log_structured(text):
+def _parse_app_log_structured(text: str) -> dict:
     """
-    从应用日志中提取结构化字段（仅原始提取，不做分析）
+    从应用日志头部提取结构化字段（仅原始提取，不做分析）。
+    调用方应传入前 APP_LOG_INIT_LINES 行拼接的文本。
     """
-    parsed = {}
     if not text:
-        return parsed
+        return {}
 
-    # detected_lcores
-    m = re.search(r"EAL:\s*Detected CPU lcores:\s*(\d+)", text)
-    if m:
-        parsed["detected_lcores"] = int(m.group(1))
+    patterns = {
+        "detected_lcores": (
+            r"EAL:\s*Detected CPU lcores:\s*(\d+)",
+            lambda m: int(m.group(1)),
+        ),
+        "detected_numa_nodes": (
+            r"EAL:\s*Detected NUMA nodes:\s*(\d+)",
+            lambda m: int(m.group(1)),
+        ),
+        "multi_process_socket": (
+            r"EAL:\s*Multi-process socket\s+(\S+)",
+            lambda m: m.group(1),
+        ),
+        "iova_mode": (
+            r"EAL:\s*Selected IOVA mode\s+'([^']+)'",
+            lambda m: m.group(1),
+        ),
+        "rte_version": (
+            r"EAL:\s*RTE Version:\s+'([^']+)'",
+            lambda m: m.group(1),
+        ),
+        "requested_device_unusable": (
+            r"EAL:\s*Requested device\s+([0-9a-fA-F:.]+)\s+cannot be used",
+            lambda m: m.group(1),
+        ),
+        "telemetry_status": (
+            r"TELEMETRY:\s*(.+)",
+            lambda m: m.group(1).strip(),
+        ),
+        "vfio_error": (
+            r"EAL:\s*(Failed to open VFIO\S*|Cannot open /dev/vfio\S*)",
+            lambda m: m.group(1),
+        ),
+        "hugepage_error": (
+            r"EAL:\s*(Cannot get hugepage information|Not enough memory available)",
+            lambda m: m.group(1),
+        ),
+        "not_enough_memory_socket": (
+            r"EAL:\s*Not enough memory available on socket\s+(\d+)",
+            lambda m: int(m.group(1)),
+        ),
+    }
 
-    # detected_numa_nodes
-    m = re.search(r"EAL:\s*Detected NUMA nodes:\s*(\d+)", text)
-    if m:
-        parsed["detected_numa_nodes"] = int(m.group(1))
+    parsed = {}
 
-    # shared_linkage_detected
+    # 通用模式批量匹配
+    for key, (pattern, extractor) in patterns.items():
+        m = re.search(pattern, text, re.MULTILINE)
+        if m:
+            parsed[key] = extractor(m)
+
+    # 布尔标志：共享链接检测
     if re.search(r"EAL:\s*Detected shared linkage of DPDK", text):
         parsed["shared_linkage_detected"] = True
 
-    # multi_process_socket
-    m = re.search(r"EAL:\s*Multi-process socket\s+(\S+)", text)
-    if m:
-        parsed["multi_process_socket"] = m.group(1)
-
-    # iova_mode
-    m = re.search(r"EAL:\s*Selected IOVA mode\s+'([^']+)'", text)
-    if m:
-        parsed["iova_mode"] = m.group(1)
-
-    # pci_probe_driver / pci_probe_device
-    m = re.search(
-        r"EAL:\s*Probe PCI driver:\s*([^\s]+).*?device:\s*([0-9a-fA-F:.]+)",
-        text
+    # 多设备：收集所有 PCI 探测记录（改为列表，支持多网卡）
+    pci_probes = re.findall(
+        r"EAL:\s*Probe PCI driver:\s*(\S+).*?device:\s*([0-9a-fA-F:.]+)",
+        text,
     )
-    if m:
-        parsed["pci_probe_driver"] = m.group(1)
-        parsed["pci_probe_device"] = m.group(2)
+    if pci_probes:
+        parsed["pci_probes"] = [
+            {"driver": driver, "device": device}
+            for driver, device in pci_probes
+        ]
 
-    # driver_init_error（优先匹配完整函数行）
+    # 驱动初始化错误：精确匹配优先，降级到宽泛匹配
     m = re.search(
         r"^([A-Za-z_][A-Za-z0-9_]*)\(\):\s*(Failed to init PCI device.*)$",
         text,
         re.MULTILINE,
     )
     if m:
-        source = m.group(1).strip()
+        source  = m.group(1).strip()
         message = m.group(2).strip()
-        parsed["driver_error_source"] = source
+        parsed["driver_error_source"]  = source
         parsed["driver_error_message"] = message
-        parsed["driver_init_error"] = f"{source}(): {message}"
+        parsed["driver_init_error"]    = f"{source}(): {message}"
     else:
-        # 兜底：至少保留完整原始错误行，不返回截断值
         m2 = re.search(r"^(.*Failed to init PCI device.*)$", text, re.MULTILINE)
         if m2:
-            raw = m2.group(1).strip()
-            parsed["driver_init_error"] = raw
-
-    # requested_device_unusable
-    m = re.search(r"EAL:\s*Requested device\s+([0-9a-fA-F:.]+)\s+cannot be used", text)
-    if m:
-        parsed["requested_device_unusable"] = m.group(1)
-
-    # telemetry_status
-    m = re.search(r"TELEMETRY:\s*(.+)", text)
-    if m:
-        parsed["telemetry_status"] = m.group(1).strip()
-
-    # fatal_signal
-    m = re.search(r"^(Segmentation fault(?:\s*\(core dumped\))?)\s*$", text, re.MULTILINE)
-    if m:
-        parsed["fatal_signal"] = m.group(1)
+            parsed["driver_init_error"] = m2.group(1).strip()
 
     return parsed
 
 
-def extract_app_log(log_path, context):
+def _extract_fatal_signal(tail_text):
+    """从日志尾部检测崩溃信号行。"""
+    m = re.search(
+        r"^(Segmentation fault(?:\s*\(core dumped\))?)\s*$",
+        tail_text,
+        re.MULTILINE,
+    )
+    return m.group(1) if m else None
+
+
+def extract_app_log(log_path: str, context: dict) -> None:
     """
-    读取应用日志，便于离线回溯
+    读取应用日志：
+    - 前 APP_LOG_INIT_LINES 行做结构化解析（EAL 初始化字段）
+    - 后 APP_LOG_TAIL_LINES 行保留原文用于崩溃回溯
+    - 尾部单独检测崩溃信号
     """
     if not log_path:
         return
+
     text = safe_read_text(log_path)
     if text is None:
         context["app_log_tail"] = [f"log file not found or unreadable: {log_path}"]
         return
 
     lines = text.splitlines()
-    context["app_log_tail"] = lines[-APP_LOG_TAIL_LINES:]
 
-    parsed = _parse_app_log_structured(text)
+    # 结构化解析：只扫描前 N 行，避免在大日志上全文正则
+    init_text = "\n".join(lines[:APP_LOG_INIT_LINES])
+    parsed = _parse_app_log_structured(init_text)
     if parsed:
         context["app_log_parsed"] = parsed
+
+    # 尾部原文：保留最后 200 行用于崩溃现场回溯
+    tail_lines = lines[-APP_LOG_TAIL_LINES:]
+    context["app_log_tail"] = tail_lines
+
+    # 尾部单独检测崩溃信号（不依赖前 500 行）
+    tail_text = "\n".join(tail_lines)
+    fatal = _extract_fatal_signal(tail_text)
+    if fatal:
+        context["app_log_fatal_signal"] = fatal
 
 
 def parse_gdb_context(pid, context, log_path=None):
@@ -197,7 +320,11 @@ def parse_gdb_context(pid, context, log_path=None):
     for fn, args in steps:
         try:
             fn(*args)
-        except Exception as exc:  # 单项失败不阻断
-            context.setdefault("errors", []).append(f"{fn.__name__}: {exc}")
+        except Exception as exc:
+            context.setdefault("errors", []).append({
+                "step":  fn.__name__,
+                "type":  type(exc).__name__,
+                "error": str(exc),
+            })
 
     return context

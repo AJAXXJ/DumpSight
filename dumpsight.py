@@ -101,11 +101,11 @@ def setup(
     config.set_config("redis_password", redis_password)
 
     # register client to server
-    try:
-        client_register(config)
-    except Exception as e:
-        click.echo(f"Client registration failed: {e}", err=True)
-        return
+    # try:
+    #     client_register(config)
+    # except Exception as e:
+    #     click.echo(f"Client registration failed: {e}", err=True)
+    #     return
 
     # configure core pattern
     pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
@@ -161,11 +161,11 @@ def status():
     click.echo("Current DumpSight configuration:")
 
     # client registration status
-    try:
-        client_status(config)
-        click.echo("Client already registered with the server.")
-    except Exception as e:
-        click.echo(f"Client status check failed: {e}", err=True)
+    # try:
+    #     client_status(config)
+    #     click.echo("Client already registered with the server.")
+    # except Exception as e:
+    #     click.echo(f"Client status check failed: {e}", err=True)
 
 
 @click.command()
@@ -192,7 +192,7 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     """
     dpdk_cmd_str = dpdk_running_args
     cmd = shlex.split(dpdk_cmd_str)
-    status =  "running"
+    status = "running"
 
     if file_prefix is not None:
         cmd += [f"--file-prefix={file_prefix}"]
@@ -204,39 +204,17 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     else:
         instance = 0
 
-    # Run the DPDK app and redirect output to the specified log file
-    try:
-        if log is None:
-            log = f"dpdk_{id_generator.generate_unique_id()}.log"
-        log = os.path.join(config.logs_dir, log)
-
-        cmd_str = " ".join(cmd)
-        process = subprocess.Popen(f"{cmd_str} > {log} 2>&1", shell=True)
-
-        time.sleep(2)
-
-        click.echo(
-            f"DPDK running command executed successfully. ELA log is redirected to {log}"
-        )
-    except (OSError, FileNotFoundError) as e:
-        click.echo(f"Error running dpdk app: {e}", err=True)
-        status = "stop"
-
-    # test tel connection
-    if not test_telemetry_connection(file_prefix, instance):
-        click.echo(f"Error testing telemetry connection for dpdk app")
-        status = "stop"
+    if log is None:
+        log = f"dpdk_{id_generator.generate_unique_id()}.log"
+    log = os.path.join(config.logs_dir, log)
 
     # exe path
     dpdk_app_path = cmd[0]
     if not Path(dpdk_app_path).is_absolute():
         dpdk_app_path = str(Path(dpdk_app_path).resolve())
 
-    # exe pid
-    children = psutil.Process(process.pid).children(recursive=True)
-    pid = children[0].pid if children else process.pid
-
     monitor_info = {
+        "pid": None,
         "cmd": cmd,
         "exe_name": Path(dpdk_app_path).name,
         "exe_path": dpdk_app_path,
@@ -247,8 +225,51 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
         "start_time": time.time(),
     }
 
-    # Save monitor info to the monitor file
-    get_monitor_manager().add_monitor_info(pid, monitor_info)
+    pid = None
+
+    # Run the DPDK app and redirect output to the specified log file
+    try:
+        logfile = open(log, "w")
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            shell=False,
+            preexec_fn=os.setsid,
+        )
+
+        pid = process.pid
+        monitor_info["pid"] = pid
+        get_monitor_manager().add_monitor_info(pid, monitor_info)
+
+        click.echo(
+            f"DPDK running command executed successfully. log redirected to {log}, pid={pid}"
+        )
+    except (OSError, FileNotFoundError) as e:
+        click.echo(f"Error running dpdk app: {e}", err=True)
+        monitor_info["status"] = "stop"
+        return
+
+    # test tel connection
+    def wait_telemetry(file_prefix, instance, retry=4, interval=0.1):
+        for _ in range(retry):
+            if test_telemetry_connection(file_prefix, instance):
+                return True
+            time.sleep(interval)
+        return False
+
+    try:
+        if not wait_telemetry(file_prefix, instance):
+            monitor_info["status"] = "stop"
+            click.echo("telemetry not ready")
+    except Exception as e:
+        click.echo(f"telemetry failed: {e}")
+        monitor_info["status"] = "stop"
+
+    if pid is not None:
+        monitor_info["pid"] = pid
+        get_monitor_manager().add_monitor_info(pid, monitor_info)
 
 
 @click.command()

@@ -15,10 +15,10 @@ class RedisUtil:
         """
         try:
             self.redis_client = redis.Redis(
-                host=current_app.config['REDIS_HOST'],
+                host=current_app.config.get('REDIS_HOST'),
                 port=int(current_app.config['REDIS_PORT']),
-                password=current_app.config['REDIS_DB'],
-                db=int(current_app.config['REDIS_PASSWORD']),
+                password=current_app.config['REDIS_PASSWORD'],
+                db=int(current_app.config['REDIS_DB']),
                 decode_responses=True,
                 socket_timeout=5,
                 socket_connect_timeout=5,

@@ -16,7 +16,6 @@ _VERSIONS_DIR = _PROMPTS_ROOT / "versions"
 
 SYSTEM_KEYS: frozenset[str] = frozenset(
     {
-        "base_system",
         "fault_analyst",
         "realtime_monitor",
         "case_builder",
@@ -28,7 +27,6 @@ TEMPLATE_KEYS: frozenset[str] = frozenset(
         "fault_analysis",
         "anomaly_detection",
         "case_ingestion",
-        "root_cause_reasoning",
         "alert_generation",
         "repair_suggestion",
     }

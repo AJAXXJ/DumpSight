@@ -30,19 +30,6 @@ SUBSYSTEMS = {
 # 关键寄存器
 KEY_REGISTER = ["rip", "rsp", "rbp", "rdi", "rsi", "rdx"]
 
-# 关键 DPDK 库名
-CRITICAL_DPDK_LIBS = [
-    "librte_eal",
-    "librte_mbuf",
-    "librte_ethdev",
-    "librte_mempool",
-    "librte_ring",
-    "librte_pci",
-    "librte_bus_pci",
-    "librte_bus_vdev",
-    "librte_kvargs",
-    "librte_telemetry",
-]
 
 KEY_LS_CPU = [
             "Architecture",
@@ -59,7 +46,42 @@ KEY_LS_CPU = [
             "CPU min MHz"
         ]
 
+_GDB_COMMANDS = [
+    "set print frame-arguments all",
+    "echo === INFO_THREADS_BEGIN ===\\n",
+    "info threads",
+    "echo === INFO_THREADS_END ===\\n",
+    "echo === THREAD_BT_BEGIN ===\\n",
+    "thread apply all bt 5",
+    "echo === THREAD_BT_END ===\\n",
+    "echo === BT_FULL_BEGIN ===\\n",
+    "bt full",
+    "echo === BT_FULL_END ===\\n",
+    "echo === REGISTERS_BEGIN ===\\n",
+    "info registers",
+    "echo === REGISTERS_END ===\\n",
+    "echo === RSP_BEGIN ===\\n",
+    "x/4xg $rsp",
+    "echo === RSP_END ===\\n",
+    "echo === RBP_BEGIN ===\\n",
+    "x/4xg $rbp",
+    "echo === RBP_END ===\\n",
+    "echo === SHARED_BEGIN ===\\n",
+    "info shared",
+    "echo === SHARED_END ===\\n",
+    "echo === ARGS_BEGIN ===\\n",
+    "show args",
+    "echo === ARGS_END ===\\n",
+    "echo === MAPPINGS_BEGIN ===\\n",
+    "info proc mappings",
+    "echo === MAPPINGS_END ===\\n",
+]
+
+
+
 # 统一超时/采集配置
+APP_LOG_INIT_LINES = 500
+APP_LOG_TAIL_LINES = 200
 GDB_TIMEOUT = 60
 COLLECT_TIMEOUT = 5
 FILE_STABLE_TIMEOUT = 5

@@ -28,6 +28,8 @@ StandardOutput=journal
 StandardError=journal
 TimeoutStopSec=30
 
+LimitCORE=infinity
+
 [Install]
 WantedBy=multi-user.target
 """

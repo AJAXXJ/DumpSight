@@ -1,5 +1,4 @@
 import logging
-from agent.graphs.state import DPDKDiagnosisState
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ def edge_after_reasoning(state):
     """
     根因推理后：
     - 有错误          → handle_error
-    - 置信度低/无修复步骤 → repair_suggestion（增强节点）
+    - 置信度低/无修复步骤 → repair_suggestion 修复增强节点
     - 其余            → generate_report
     """
     if state.get("error"):

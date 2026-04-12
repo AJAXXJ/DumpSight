@@ -9,11 +9,11 @@ Base = declarative_base()
 class MysqlUtil:
 
     def __init__(self):
-        host = current_app.config.get("MYSQL_HOST", "localhost")
-        port = current_app.config.get("MYSQL_PORT", 3306)
-        user = current_app.config.get("MYSQL_USER", "root")
-        password = current_app.config.get("MYSQL_PASSWORD", "")
-        database = current_app.config.get("MYSQL_DATABASE", "")
+        host = current_app.config["MYSQL_HOST"]
+        port = current_app.config["MYSQL_PORT"]
+        user = current_app.config["MYSQL_USER"]
+        password = current_app.config["MYSQL_PASSWORD"]
+        database = current_app.config["MYSQL_DATABASE"]
 
         db_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
 

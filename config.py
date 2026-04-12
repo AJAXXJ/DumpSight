@@ -16,7 +16,7 @@ sys.path.append(EXE_DIR)
 
 # Single source of truth for all defaults
 DEFAULT_CONFIG: dict = {
-    "dpdk_batch_ttl": 910,
+    "dpdk_batch_ttl": 300,
     "encryption_key": "XUT",
     "schedule_heartbeat_interval": 10,
     "schedule_clean_crashed_core_interval": 600,

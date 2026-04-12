@@ -53,17 +53,6 @@ def wait_file_stable(path, timeout=30, interval=0.5):
     return False
 
 
-def parse_pid_from_filename(filename):
-    """
-    从 core.<exe>.<pid>... 文件名中解析 pid，失败返回 None
-    """
-    try:
-        parts = filename.split(".")
-        return int(parts[2])
-    except (IndexError, ValueError):
-        return None
-
-
 def is_probable_executable(path):
     """
     粗略判断是否为可执行文件（x 位或 ELF 头）

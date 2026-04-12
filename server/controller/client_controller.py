@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 
-from server.service.client_service import client_core_analyse_service, client_register_service, client_status_service
+from server.service.client_service import client_core_analyse_service, client_heartbeat_service, client_register_service, client_status_service
 
 client_bp = Blueprint("client", __name__)
 
@@ -28,8 +28,7 @@ def client_register():
 def client_heartbeat():
     try:
         heartbeat_info = request.get_json()
-        # TODO
-        
+        client_heartbeat_service(heartbeat_info)
         return jsonify({"message": "Heartbeat received successfully"}), 200
 
     except Exception as e:

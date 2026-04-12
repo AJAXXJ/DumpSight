@@ -1,0 +1,52 @@
+llm:
+  fast_model: glm-4.5
+  strong_model: glm-4.5
+  temperature: 0.0
+  max_tokens: 4096
+  timeout: 60
+  max_retries: 3
+
+api_keys:
+  openai_api_key: "d4a1046e4d894de9801e1b7d6924eb91.13WydelxpTCEigL1"
+  openai_api_base: "https://open.bigmodel.cn/api/paas/v4/"
+
+vector_store:
+  type: chroma
+  chroma:
+    host: localhost
+    port: 8000
+    collection: dpdk_cases
+  qdrant:
+    host: localhost
+    port: 6333
+    collection: dpdk_cases
+
+embedding:
+  model: text-embedding-3-small
+  dim: 1536
+
+metadata_db:
+  url: sqlite:///./case_library.db
+
+retriever:
+  top_k: 5
+  score_threshold: 0.7
+
+monitor:
+  interval_1s: 1.0
+  interval_5s: 5.0
+  webhook_url: ""
+  cooldown_sec: 60
+
+prompt:
+  version: "v1"
+  few_shots_enabled: true
+  few_shots_max: 3
+
+langgraph:
+  checkpointer_type: memory
+  checkpointer_db_url: ./langgraph_checkpoints.db
+
+log:
+  level: INFO
+  json: false

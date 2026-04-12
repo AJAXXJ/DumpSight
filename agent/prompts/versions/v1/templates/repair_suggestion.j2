@@ -1,0 +1,39 @@
+根据以下 DPDK 崩溃初步信息
+
+DPDK 版本
+{{ dpdk_version }}
+
+根因
+{{ root_cause }}
+
+调用链信息
+程序崩溃时的主要调用路径：{{ call_chain.main_path }}
+
+函数之间的调用关系：{{ call_chain.call_relations }}
+
+崩溃发生时的调用栈顺序：{{ call_chain.crash_signature }}
+
+每个线程的调用栈摘要：{{ call_chain.threads_summary }}
+
+崩溃发生的函数：{{ call_chain.crash_function }}
+
+{% if few_shots %}
+参考示例：
+{% for shot in few_shots %}
+输入：{{ shot.input }}
+输出：{{ shot.output }}
+{% endfor %}
+{% endif %}
+
+请分析 DPDK 崩溃原因，并严格以 JSON 格式输出修复步骤：
+
+必须遵循以下 JSON Schema：
+
+{
+  "repair_steps": ["string"]
+}
+
+要求：
+- 只输出 JSON，不要输出任何额外文本
+- 所有字段必须存在
+- repair_steps 必须是数组

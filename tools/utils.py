@@ -4,7 +4,7 @@ import sys
 import time
 import click
 import threading
-from monitor.coredump_extractor.constant import SIGNAL_MAP
+from tools.constant import SIGNAL_MAP
 from tools.logger import logger
 
 def check_root():

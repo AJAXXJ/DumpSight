@@ -1,3 +1,5 @@
+import platform
+import socket
 import subprocess
 import time
 import json
@@ -17,11 +19,15 @@ def environment():
     """
     Collects the DPDK context information.
     """
+
+
     return {
         "version": dpdk_version(),
         "cpu": get_cpu_layout_simple(),  # CPU 拓扑 / 核心分布信息
         "hugepage": get_hugepage_status(),  # HugePage 状态
         "devbind": get_device_status(),  # 网卡设备绑定状态
+        "hostname": socket.gethostname(),  # 获取主机名
+        "os": platform.system() + " " + platform.version(),  # 获取操作系统和版本
     }
 
 
@@ -238,10 +244,6 @@ def check_devbind_on_anomaly():
     return alert  # DPDK 设备绑定一致性检查
 
 
-def test_telemetry():
-    pass
-
-
 class DPDKLiveMonitor:
     """
     Monitors multiple DPDK instances concurrently, buffers and uploads in batches.
@@ -286,11 +288,7 @@ class DPDKLiveMonitor:
         file_prefix = instance.get("file_prefix")
         instance_id = instance.get("instance")
 
-        ident = {
-            "pid": pid,
-            "file_prefix": file_prefix,
-            "instance": instance_id,
-        }
+        ident = {}
 
         while not stop_event.is_set() and not self._global_stop.is_set():
             t0 = time.time()

@@ -34,14 +34,15 @@ def get_dpdk_core_info(client_id, pid, timestamp):
         logger.error(f"Failed to decode dpdk core info JSON for client {client_id} pid {pid}")
         return None
 
-def get_dpdk_log(client_id, pid, record_type, minutes=15):
+
+def get_dpdk_log(client_id, pid, record_type, seconds=900):
     """
     Get DPDK log data for a specific PID and type within the last N minutes.
     record_type: "1s" or "5s"
     """
     now = int(time.time())
-    start = now - minutes * 60
-
+    start = now - seconds
+ 
     keys = [
         f"{client_id}:log:{pid}:{record_type}:{ts}"
         for ts in range(start, now + 1)
@@ -60,12 +61,12 @@ def get_dpdk_log(client_id, pid, record_type, minutes=15):
     return sorted(result, key=lambda x: x.get("timestamp", 0))
 
 
-def get_dpdk_log_both(client_id, pid, minutes=15):
+def get_dpdk_log_both(client_id, pid, seconds=900):
     """
     Get both 1s and 5s DPDK log data for a specific PID in a single pipeline call.
     """
     now = int(time.time())
-    start = now - minutes * 60
+    start = now - seconds
     timestamps = range(start, now + 1)
 
     keys_1s = [f"{client_id}:log:{pid}:1s:{ts}" for ts in timestamps]
@@ -89,3 +90,23 @@ def get_dpdk_log_both(client_id, pid, minutes=15):
         "1s": sorted(result_1s, key=lambda x: x.get("timestamp", 0)),
         "5s": sorted(result_5s, key=lambda x: x.get("timestamp", 0)),
     }
+
+
+def get_client_running_instances(client_id):
+    """
+    Get all running DPDK instances for a specific client.
+    """
+    kv = get_redis_util().scan_with_values(f"{client_id}:info:*")
+
+    result = []
+    for data in kv.values():
+        try:
+            monitor_info = json.loads(data)
+            if monitor_info["status"] != "running":
+                continue
+            result.append(monitor_info)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode monitor info JSON for client {client_id}")
+            continue
+
+    return sorted(result, key=lambda x: x.get("start_time", 0))

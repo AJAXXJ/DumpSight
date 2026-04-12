@@ -1,0 +1,6 @@
+- input: |
+    rte_pktmbuf_alloc 返回 NULL
+  output: |
+    修复建议：
+    - 确保 rte_mempool_create 已执行
+    - 使用前检查 mempool 是否为空
