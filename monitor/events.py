@@ -6,7 +6,7 @@ from inotify_simple import INotify, flags
 from monitor.coredump_extractor.main import run_core_extractor
 from monitor.live_monitor import check_devbind_on_anomaly
 from monitor.monitor_manager import get_monitor_manager
-from tools.utils import parse_core_filename
+from tools.common_utils import parse_core_filename
 from tools.logger import logger
 from monitor.request import client_heartbeat, report_crash
 
@@ -85,7 +85,7 @@ def monitor_core(config):
                 get_monitor_manager().set_preprocess_core_info(pid, preprocess_info)
 
                 # report crash to server
-                # report_crash(config, pid, timestamp)
+                report_crash(config, pid, timestamp)
 
     finally:
         inotify.rm_watch(wd)
@@ -117,9 +117,9 @@ def send_client_heartbeat(config, dpdk_monitor=None):
         batch = dpdk_monitor.flush() if dpdk_monitor is not None else []
         if batch:
             get_monitor_manager().flush_dpdk_batch(batch)
-        # else:
-        #     logger.info("No DPDK batch to flush.")
-        # client_heartbeat(config)
+        else:
+            logger.info("No DPDK batch to flush.")
+        client_heartbeat(config)
 
     schedule.every(config.schedule_heartbeat_interval).seconds.do(_heartbeat_with_flush)
 

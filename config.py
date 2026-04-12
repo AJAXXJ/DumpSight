@@ -17,7 +17,6 @@ sys.path.append(EXE_DIR)
 # Single source of truth for all defaults
 DEFAULT_CONFIG: dict = {
     "dpdk_batch_ttl": 300,
-    "encryption_key": "XUT",
     "schedule_heartbeat_interval": 10,
     "schedule_clean_crashed_core_interval": 600,
     "tmp_dir": "tmp",
@@ -42,7 +41,6 @@ class DumpSightConfig:
 
     # Runtime fields (populated after __post_init__)
     dpdk_batch_ttl: int = field(init=False)
-    encryption_key: str = field(init=False)
     schedule_heartbeat_interval: int = field(init=False)
     schedule_clean_crashed_core_interval: int = field(init=False)
     tmp_dir: str = field(init=False)
@@ -81,7 +79,6 @@ class DumpSightConfig:
         # Remaining scalar fields
         for key in (
             "dpdk_batch_ttl",
-            "encryption_key",
             "schedule_heartbeat_interval",
             "schedule_clean_crashed_core_interval",
             "client_id",

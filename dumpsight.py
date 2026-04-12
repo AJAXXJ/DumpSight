@@ -1,15 +1,15 @@
 import os
 import time
+import uuid
 import click
-import psutil
 import subprocess
 from pathlib import Path
 from config import config
 from monitor.dpdk_tools.dpdk_telemetry import test_telemetry_connection
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_register, client_status
-from tools.daemon import install_systemd_service, run_daemon, systemctl
-from tools.utils import check_root, id_generator
+from monitor.daemon import install_systemd_service, run_daemon, systemctl
+from tools.common_utils import check_root
 import shlex
 
 
@@ -54,9 +54,6 @@ def _configure_core_pattern(pattern):
     "--client_id", prompt="Enter Client ID", help="The client ID for DumpSight. "
 )
 @click.option(
-    "--client_secret", prompt="Enter Client Secret", help="The secret for the client. "
-)
-@click.option(
     "--server_url", prompt="Enter Server URL", help="The server URL for DumpSight. "
 )
 @click.option(
@@ -72,12 +69,11 @@ def _configure_core_pattern(pattern):
 )
 @click.option(
     "--redis_password",
-    prompt="Enter Redis Password",
-    help="The Redis Password for DumpSight. ",
+    prompt="Enter Redis Password(space for skipping)",
+    help="The Redis Password for DumpSight.",
 )
 def setup(
     client_id,
-    client_secret,
     server_url,
     redis_host,
     redis_port,
@@ -91,21 +87,19 @@ def setup(
 
     # configure global config
     config.set_config("client_id", client_id)
-    config.set_config("client_secret", client_secret)
 
     config.set_config("server_url", server_url)
 
     config.set_config("redis_host", redis_host)
     config.set_config("redis_port", redis_port)
     config.set_config("redis_db", redis_db)
-    config.set_config("redis_password", redis_password)
+    config.set_config("redis_password", redis_password.strip() or None)
 
     # register client to server
-    # try:
-    #     client_register(config)
-    # except Exception as e:
-    #     click.echo(f"Client registration failed: {e}", err=True)
-    #     return
+    ok, result = client_register(config)
+    if not ok:
+        click.echo(f"register failed: {result}", err=True)
+        return
 
     # configure core pattern
     pattern = f"{config.core_dump_dir}/core.%e.%p.%i.%s.%t.%E"
@@ -161,11 +155,11 @@ def status():
     click.echo("Current DumpSight configuration:")
 
     # client registration status
-    # try:
-    #     client_status(config)
-    #     click.echo("Client already registered with the server.")
-    # except Exception as e:
-    #     click.echo(f"Client status check failed: {e}", err=True)
+    try:
+        client_status(config)
+        click.echo("Client already registered with the server.")
+    except Exception as e:
+        click.echo(f"Client status check failed: {e}", err=True)
 
 
 @click.command()
@@ -193,6 +187,7 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     dpdk_cmd_str = dpdk_running_args
     cmd = shlex.split(dpdk_cmd_str)
     status = "running"
+    monitor_manager = get_monitor_manager()
 
     if file_prefix is not None:
         cmd += [f"--file-prefix={file_prefix}"]
@@ -205,7 +200,7 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
         instance = 0
 
     if log is None:
-        log = f"dpdk_{id_generator.generate_unique_id()}.log"
+        log = f"dpdk_{str(uuid.uuid4())}.log"
     log = os.path.join(config.logs_dir, log)
 
     # exe path
@@ -241,7 +236,7 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
 
         pid = process.pid
         monitor_info["pid"] = pid
-        get_monitor_manager().add_monitor_info(pid, monitor_info)
+        monitor_manager.add_monitor_info(pid, monitor_info)
 
         click.echo(
             f"DPDK running command executed successfully. log redirected to {log}, pid={pid}"
@@ -261,15 +256,19 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
 
     try:
         if not wait_telemetry(file_prefix, instance):
-            monitor_info["status"] = "stop"
             click.echo("telemetry not ready")
+            monitor_manager.update_status_if_running(pid, "stop")
     except Exception as e:
         click.echo(f"telemetry failed: {e}")
-        monitor_info["status"] = "stop"
+        monitor_manager.update_status_if_running(pid, "stop")
 
-    if pid is not None:
-        monitor_info["pid"] = pid
-        get_monitor_manager().add_monitor_info(pid, monitor_info)
+
+@click.command()
+@click.option(
+    "--pid", prompt="Enter PID", help="Stop the PID DPDK app."
+)
+def stop(pid):
+    pass
 
 
 @click.command()
@@ -307,6 +306,7 @@ def daemon_restart():
 cli.add_command(setup)
 cli.add_command(status)
 cli.add_command(monitor)
+cli.add_command(stop)
 cli.add_command(daemon)
 cli.add_command(daemon_start)
 cli.add_command(daemon_stop)

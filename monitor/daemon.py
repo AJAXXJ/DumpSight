@@ -5,7 +5,7 @@ import threading
 from monitor.live_monitor import DPDKLiveMonitor
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_heartbeat
-from tools.events import (
+from monitor.events import (
     clean_crashed_core,
     monitor_core,
     send_client_heartbeat,

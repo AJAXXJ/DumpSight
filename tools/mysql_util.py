@@ -1,4 +1,3 @@
-from flask import current_app
 from sqlalchemy import create_engine
 from contextlib import contextmanager
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
@@ -8,29 +7,31 @@ Base = declarative_base()
 
 class MysqlUtil:
 
-    def __init__(self):
-        host = current_app.config["MYSQL_HOST"]
-        port = current_app.config["MYSQL_PORT"]
-        user = current_app.config["MYSQL_USER"]
-        password = current_app.config["MYSQL_PASSWORD"]
-        database = current_app.config["MYSQL_DATABASE"]
+    def __init__(self, config):
+        host = config["MYSQL_HOST"]
+        port = config["MYSQL_PORT"]
+        user = config["MYSQL_USER"]
+        password = config["MYSQL_PASSWORD"]
+        database = config["MYSQL_DATABASE"]
 
         db_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
 
-        self.mysql_client = create_engine(
+        self.engine = create_engine(
             db_url,
             pool_pre_ping=True,
             pool_recycle=3600,
             echo=False
         )
 
-        self.Session = scoped_session(sessionmaker(bind=self.mysql_client))
+        self.Session = scoped_session(sessionmaker(bind=self.engine))
+        
 
-    def create_tables(self):
+    def init_db(self):
         """
-        create all ORM table
+        init db
         """
         Base.metadata.create_all(self.engine)
+
 
     def get_session(self):
         """
@@ -53,10 +54,15 @@ class MysqlUtil:
 _mysql_util = None
 _mysql_lock = threading.Lock()
 
-def get_mysql_util() -> MysqlUtil:
+
+def init_mysql_util(config):
     global _mysql_util
+    with _mysql_lock:
+        if _mysql_util is None:
+            _mysql_util = MysqlUtil(config)
+
+
+def get_mysql_util():
     if _mysql_util is None:
-        with _mysql_lock:
-            if _mysql_util is None:
-                _mysql_util = MysqlUtil()
+        raise RuntimeError("MySQL util not initialized")
     return _mysql_util

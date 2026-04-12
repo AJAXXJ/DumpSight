@@ -1,6 +1,5 @@
 import requests
 from monitor.live_monitor import environment
-from tools.encrypt_decrypt import encrypt
 from tools.logger import logger
 
 
@@ -28,25 +27,24 @@ def client_register(config):
     """
     Register the client with the server.
     """
+    register_url = config.server_url + "/api/client/register"
+
+    payload = {
+        "client_id": config.client_id,
+        "environment": environment(),
+    }
+
     try:
-        register_url = config.server_url + "/api/client/register"
-
-        payload = {
-            "client_id": config.client_id,
-            "client_secret": encrypt(config.secret_key, config.encryption_key),
-            "environment": environment(),
-        }
-
-        response = requests.post(register_url, json=payload)
+        response = requests.post(register_url, json=payload, timeout=5)
 
         if response.status_code == 200:
             logger.info("Client registered successfully.")
-        else:
-            raise Exception(
-                f"Client registration failed with status code: {response.status_code}"
-            )
+            return True, response.json() if response.content else None
+
+        return False, response.text
+
     except Exception as e:
-        logger.error(f"Error during client registration: {e}")
+        return False, str(e)
 
 
 def client_heartbeat(config):

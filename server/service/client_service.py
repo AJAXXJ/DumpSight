@@ -1,4 +1,3 @@
-from flask import current_app
 from agent.graphs.fault_analysis.graph import get_fault_analysis_graph
 from agent.graphs.live_monitor.graph import get_realtime_monitor_graph
 from agent.main import run_fault_anlyse, run_realtime_monitor
@@ -12,7 +11,6 @@ from server.repository.client_repository import (
     update_client_heartbeat,
 )
 from server.repository.core_repositiry import add_core_info
-from server.tools.encrypt_decrypt import decrypt
 
 
 def client_status_service(client_id):
@@ -27,13 +25,13 @@ def client_register_service(client_register_info):
     Register a new client with the server.
     """
     client_id = client_register_info.get("client_id")
-    client_secret = client_register_info.get("client_secret")
     environment = client_register_info.get("environment")
 
-    if current_app.config["SECRET_KEY"] != decrypt(client_secret):
-        raise ValueError("Client secret does not match!")
-
+    if get_client_info(client_id):
+        raise ValueError(f"Client {client_id} already exists")
+    
     add_client_info(client_id, environment)
+
 
 
 def client_heartbeat_service(heartbeat_info):

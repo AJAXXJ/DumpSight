@@ -1,25 +1,13 @@
-import os
-import sys
 import yaml
-from functools import lru_cache
-from pathlib import Path
 import warnings
-
-
-def get_exe_dir() -> str:
-    """Get the directory of the current executable or script."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
-
-
-EXE_DIR = get_exe_dir()
+from pathlib import Path
+from functools import lru_cache
 
 
 class Settings:
     def __init__(self, config_path=None):
         if config_path is None:
-            config_path = os.path.join(EXE_DIR, "agent-config.yaml")
+            config_path = Path(__file__).parent / "agent-config.yaml"
 
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)

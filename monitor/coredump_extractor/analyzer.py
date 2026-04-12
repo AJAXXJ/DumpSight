@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 
 from monitor.coredump_extractor.tools.mismatch_pattern import assess_symbol_status
-from tools.utils import parse_core_filename
+from tools.common_utils import parse_core_filename
 
 from .extractor.context_parser import parse_gdb_context
 from .extractor.meta_parser import parse_gdb_output

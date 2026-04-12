@@ -1,5 +1,5 @@
 from sqlalchemy import TIMESTAMP, Column, text
-from server.tools.mysql_util import Base, get_mysql_util
+from tools.mysql_util import Base, get_mysql_util
 
 
 class BaseModel(Base):
@@ -22,7 +22,6 @@ class BaseModel(Base):
             data[column.name] = value
         return data
 
-    # -------------------- CRUD --------------------
 
     @classmethod
     def create(cls, **kwargs):
@@ -30,7 +29,7 @@ class BaseModel(Base):
             obj = cls(**kwargs)
             session.add(obj)
             session.flush()
-            return obj.to_dict()  # ✅ 直接返回 dict
+            return obj.to_dict()
 
     @classmethod
     def get(cls, **kwargs):
@@ -67,8 +66,8 @@ class BaseModel(Base):
                 return False
             for k, v in updates.items():
                 setattr(obj, k, v)
-            session.flush()  # 提交更新
-            return obj.to_dict()  # ✅ 返回更新后的 dict
+            session.flush() 
+            return obj.to_dict()
 
     @classmethod
     def page(cls, page=1, page_size=10, **filters):

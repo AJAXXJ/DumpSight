@@ -1,6 +1,5 @@
-import os
 import re
-from typing import Optional, TypedDict, Union
+from typing import Optional, TypedDict
 from monitor.coredump_extractor.tools.parse_call_chain import parse_call_chain, to_llm_input
 from tools.constant import IDLE_FRAMES, SUBSYSTEMS, KEY_REGISTER
 

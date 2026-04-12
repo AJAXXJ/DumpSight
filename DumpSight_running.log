@@ -1,0 +1,420 @@
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:19:26 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:19:26 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:26 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:19:26 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:26 [INFO] [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-04-12 14:19:26 [INFO] [werkzeug] [33mPress CTRL+C to quit[0m
+2026-04-12 14:19:26 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:19:28 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:19:28 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:28 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:19:28 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:28 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:19:28 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:19:31 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:19:31 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:31] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:31 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:31] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:41 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:41] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:41 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:41] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:43 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:19:43 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:43] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:19:43 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 102
+2026-04-12 14:19:51 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:51] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:51 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:19:51] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:19:57 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/service/client_service.py', reloading
+2026-04-12 14:19:57 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:19:59 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:19:59 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:59 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:19:59 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:19:59 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:19:59 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:20:01 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:20:01 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:01] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:01 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:01] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:11 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:11] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:11 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:11] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:21 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:21] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:21 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:21] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:26 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:20:27 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:20:28 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:20:28 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:20:28 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:20:28 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:20:28 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:20:28 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:20:31 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:20:31 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:31] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:31 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:31] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:31 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/service/client_service.py', reloading
+2026-04-12 14:20:31 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:20:33 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:20:33 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:20:33 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:20:33 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:20:33 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:20:33 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:20:41 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:20:41 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:41] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:41 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:41] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:47 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:20:47 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:47] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:20:47 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 102
+2026-04-12 14:20:51 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:51] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:51 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:20:51] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:20:59 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:21:00 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:21:01 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:21:01 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:01 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:21:01 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:01 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:21:01 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:21:01 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:21:01 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:01] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:01 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:01] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:02 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/service/client_service.py', reloading
+2026-04-12 14:21:02 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:21:04 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:21:04 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:04 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:21:04 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:04 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:21:04 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:21:11 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:21:11 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:11] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:11 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:11] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:21 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:21] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:21 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:21:21] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:21:22 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:21:22 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:21:24 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:21:24 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:24 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:21:24 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:24 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:21:24 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:21:25 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:21:25 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:21:51 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:21:51 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:21:51 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:21:51 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:21:51 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:21:51 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:21:52 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:21:52 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:52 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:21:52 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:52 [INFO] [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-04-12 14:21:52 [INFO] [werkzeug] [33mPress CTRL+C to quit[0m
+2026-04-12 14:21:52 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:21:53 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:21:53 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:53 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:21:53 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:21:53 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:21:53 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:22:02 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:22:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:07 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:22:07 [ERROR] [server.repository.client_repository] Failed to add client info
+Traceback (most recent call last):
+  File "/workspace/project/DumpSight/server/repository/client_repository.py", line 9, in add_client_info
+    client_info = ClientInfo.create(
+  File "/workspace/project/DumpSight/server/models/base_model.py", line 29, in create
+    obj = cls(**kwargs)
+  File "<string>", line 4, in __init__
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 596, in _initialize_instance
+    with util.safe_reraise():
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/util/langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 594, in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/decl_base.py", line 2179, in _declarative_constructor
+    raise TypeError(
+TypeError: 'timestamp' is an invalid keyword argument for ClientInfo
+2026-04-12 14:22:07 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:07] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:22:07 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 102
+2026-04-12 14:22:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:22 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:22] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:22 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:22] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:22 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:22] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:30 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:22:30 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:22:31 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:22:31 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:22:31 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:22:31 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:22:32 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:22:32 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:22:32 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:22:32 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:32] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:32 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:32] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:32 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:32] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:40 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:22:40 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:22:41 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:22:41 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:22:41 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:22:41 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:22:41 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:22:41 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:22:42 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:22:42 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:42] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:42 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:42] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:52 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:52] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:22:52 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:22:52] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:02 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:23:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:02] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:23:02 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 80
+2026-04-12 14:23:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:17 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:23:17 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:23:38 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:23:38 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:23:38 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:23:38 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:23:39 [INFO] [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-04-12 14:23:39 [INFO] [werkzeug] [33mPress CTRL+C to quit[0m
+2026-04-12 14:23:39 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:23:40 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:23:40 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:23:40 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:23:40 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:23:40 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:23:40 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:23:42 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:23:42 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:42] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:42 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:42] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:52 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:52] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:23:52 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:23:52] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:00 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:24:00 [ERROR] [server.repository.client_repository] Failed to add client info
+Traceback (most recent call last):
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/cursors.py", line 153, in execute
+    result = self._query(query)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/cursors.py", line 322, in _query
+    conn.query(q)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 826, in _read_query_result
+    result.read()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.IntegrityError: (1062, "Duplicate entry '123' for key 'client_info.client_id'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/project/DumpSight/server/repository/client_repository.py", line 10, in add_client_info
+    client_info = ClientInfo.create(client_id=client_id, environment=environment)
+  File "/workspace/project/DumpSight/server/models/base_model.py", line 31, in create
+    session.flush()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 4331, in flush
+    self._flush(objects)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 4466, in _flush
+    with util.safe_reraise():
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/util/langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 4427, in _flush
+    flush_context.execute()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/orm/persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/cursors.py", line 153, in execute
+    result = self._query(query)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/cursors.py", line 322, in _query
+    conn.query(q)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 826, in _read_query_result
+    result.read()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "/root/miniconda3/envs/dpdk/lib/python3.10/site-packages/pymysql/err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.IntegrityError: (pymysql.err.IntegrityError) (1062, "Duplicate entry '123' for key 'client_info.client_id'")
+[SQL: INSERT INTO client_info (client_id, environment) VALUES (%(client_id)s, %(environment)s)]
+[parameters: {'client_id': '123', 'environment': '{"version": "23.11.6", "cpu": [{"socket": 0, "core": 0, "cpus": [0]}, {"socket": 1, "core": 0, "cpus": [1]}, {"socket": 2, "core": 0, "cpus": [2]}, { ... (1568 characters truncated) ... ]}, "misc": {"dpdk_bound": [], "kernel_bound": [], "no_driver": []}}, "hostname": "dpdk", "os": "Linux #184-Ubuntu SMP Fri Mar 13 18:41:50 UTC 2026"}'}]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+2026-04-12 14:24:00 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:00] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:24:00 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 102
+2026-04-12 14:24:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:02 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:02] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:12 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:12] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:22 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:22] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:22 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:22] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:32 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:32] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:32 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:24:32] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:24:39 [INFO] [werkzeug]  * Detected change in '/workspace/project/DumpSight/server/repository/client_repository.py', reloading
+2026-04-12 14:24:39 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:29:01 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:29:01 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:29:01 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:29:01 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:29:01 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:29:01 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:29:02 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:29:02 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:29:02 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:29:02 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:29:02 [INFO] [werkzeug] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-04-12 14:29:02 [INFO] [werkzeug] [33mPress CTRL+C to quit[0m
+2026-04-12 14:29:02 [INFO] [werkzeug]  * Restarting with stat
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] Tool registered: client_info
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] Tool registered: dpdk_info
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] Tool registered: core_info
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] Tool registered: log_1s
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] Tool registered: log_5s
+2026-04-12 14:29:03 [INFO] [agent.config.llm_factory] initializing LLM | mode=fast base=https://open.bigmodel.cn/api/paas/v4/ model=glm-4.5
+2026-04-12 14:29:03 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts/versions/v1 version=v1
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:29:03 [INFO] [agent.prompts.prompt_registry] PromptRegistry initialized | root=/workspace/project/DumpSight/agent/prompts version=current
+2026-04-12 14:29:03 [INFO] [agent.tools.tool_registry] All tools registered: ['client_info', 'dpdk_info', 'core_info', 'log_1s', 'log_5s']
+2026-04-12 14:29:03 [WARNING] [werkzeug]  * Debugger is active!
+2026-04-12 14:29:03 [INFO] [werkzeug]  * Debugger PIN: 782-135-907
+2026-04-12 14:29:03 [INFO] [root] Redis connection established successfully.
+2026-04-12 14:29:03 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:03] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:03 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:03] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:03 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:03] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:13 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:13] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:13 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:13] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:23 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:23] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:23 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:23] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:31 [DEBUG] [urllib3.connectionpool] Starting new HTTP connection (1): localhost:5000
+2026-04-12 14:29:31 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:31] "[35m[1mPOST /api/client/register HTTP/1.1[0m" 500 -
+2026-04-12 14:29:31 [DEBUG] [urllib3.connectionpool] http://localhost:5000 "POST /api/client/register HTTP/1.1" 500 70
+2026-04-12 14:29:33 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:33] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:33 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:33] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:43 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:43] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:43 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:43] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:54 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:54] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:29:54 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:29:54] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:30:04 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:30:04] "POST /api/client/heartbeat HTTP/1.1" 200 -
+2026-04-12 14:30:04 [INFO] [werkzeug] 127.0.0.1 - - [12/Apr/2026 14:30:04] "POST /api/client/heartbeat HTTP/1.1" 200 -

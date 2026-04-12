@@ -2,7 +2,7 @@ import os
 import re
 
 from tools.constant import APP_LOG_INIT_LINES, KEY_LS_CPU, COLLECT_TIMEOUT, APP_LOG_TAIL_LINES
-from ..utils import safe_run, safe_read_text
+from monitor.coredump_extractor.utils import safe_run, safe_read_text
 
 
 _NIC_SECTION_MAP = {

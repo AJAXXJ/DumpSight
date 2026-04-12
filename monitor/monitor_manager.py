@@ -1,9 +1,8 @@
 import json
-from pathlib import Path
 import time
-from redis import RedisError
+from pathlib import Path
 from tools.logger import logger
-from tools.redis_util import get_redis_util
+from tools.redis_util import get_redis_util, RedisConfig
 from config import config
 import threading
 
@@ -11,17 +10,10 @@ class RedisMonitorManager:
 
     def __init__(self, config):
         self.config = config
-
-        if not config.client_id:
-            logger.warning(
-                "Redis configuration not found. Please run 'dumpsight setup' first."
-            )
-            self.client_id = None
-            self.info_prefix = None
-            return
-        
         self.client_id = str(config.client_id)
         self.info_prefix = f"{self.client_id}:info"
+
+        self.redis = get_redis_util(RedisConfig.from_config(config)) 
 
     def _info_key(self, pid):
         return f"{self.info_prefix}:{pid}"
@@ -31,7 +23,7 @@ class RedisMonitorManager:
         """
         Read the full monitor list from Redis (returns a dict of pid -> info).
         """
-        kv = get_redis_util().scan_with_values(f"{self.info_prefix}:*")
+        kv = self.redis.scan_with_values(f"{self.info_prefix}:*")
         result = {}
         for key, data in kv.items():
             if not data:
@@ -56,7 +48,7 @@ class RedisMonitorManager:
         """
         Get info for a specific PID.
         """
-        data = get_redis_util().get(self._info_key(pid))
+        data = self.redis.get(self._info_key(pid))
         if not data:
             return None
         try:
@@ -72,10 +64,25 @@ class RedisMonitorManager:
         """
         pid = str(pid)
         existing = self.get_pid_info(pid)
-        if existing and existing.get("status") != "running":
-            get_redis_util().delete(self._info_key(pid))
+        
+        if existing:
+            if existing.get("status") == "crashed":
+                return
+            if existing.get("status") != "running":
+                self.redis.delete(self._info_key(pid))
 
-        get_redis_util().set(self._info_key(pid), json.dumps(info))
+        self.redis.set(self._info_key(pid), json.dumps(info))
+
+
+    def update_status_if_running(self, pid, new_status):
+        """只有当前是 running 才更新状态"""
+        pid = str(pid)
+        existing = self.get_pid_info(pid)
+        if existing and existing.get("status") == "running":
+            existing["status"] = new_status
+            self.redis.set(self._info_key(pid), json.dumps(existing))
+            return True
+        return False
 
 
     def set_pid_status(self, pid, status):
@@ -89,7 +96,7 @@ class RedisMonitorManager:
             return None
 
         info["status"] = status
-        get_redis_util().set(self._info_key(pid), json.dumps(info))
+        self.redis.set(self._info_key(pid), json.dumps(info))
         return info
 
 
@@ -129,7 +136,7 @@ class RedisMonitorManager:
 
         # Batch delete all Redis keys at once
         if keys_to_delete:
-            get_redis_util().delete_many(keys_to_delete)
+            self.redis.delete_many(keys_to_delete)
 
 
     def set_preprocess_core_info(self, pid, preprocess_info):
@@ -141,7 +148,7 @@ class RedisMonitorManager:
         ttl = getattr(self.config, "core_info_ttl", None)
 
         key = f"{self.client_id}:core:{pid}:{timestamp}"
-        get_redis_util().set(key, json.dumps(preprocess_info), expire=ttl)
+        self.redis.set(key, json.dumps(preprocess_info), expire=ttl)
 
 
     def flush_dpdk_batch(self, batch):
@@ -159,7 +166,7 @@ class RedisMonitorManager:
                 continue
 
             key = f"{self.client_id}:log:{pid}:{record_type}:{timestamp_second}"
-            get_redis_util().set(key, json.dumps(record), expire=ttl)
+            self.redis.set(key, json.dumps(record), expire=ttl)
 
 
     def read_running_instances_info(self):
