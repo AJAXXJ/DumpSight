@@ -20,7 +20,6 @@ def environment():
     Collects the DPDK context information.
     """
 
-
     return {
         "version": dpdk_version(),
         "cpu": get_cpu_layout_simple(),  # CPU 拓扑 / 核心分布信息
@@ -74,19 +73,16 @@ def is_dpdk_alive(file_prefix="rte"):
     socks = telemetry.find_sockets(telemetry.get_dpdk_runtime_dir(file_prefix))
     return len(socks) > 0
 
+def _cmd_key(cmd: str, params: dict) -> str:
+    """生成与 DPDK telemetry 响应严格匹配的命令键"""
+    return cmd + "," + json.dumps(params, separators=(',', ':'))
+
 
 def poll_1s(file_prefix=None, instance=None):
-    """
-    Every 1 second, collects the DPDK application statistics, such as port stats and mempool stats.
-    """
     kw = dict(file_prefix=file_prefix, instance=instance)
 
     pre = telemetry.query_batch(
-        [
-            "/ethdev/list",
-            "/mempool/list",
-            "/dmadev/list",
-        ],
+        ["/ethdev/list", "/mempool/list", "/dmadev/list"],
         **kw,
     )
 
@@ -95,52 +91,43 @@ def poll_1s(file_prefix=None, instance=None):
     dma_ids = pre["/dmadev/list"].get("/dmadev/list") or []
 
     cmds = (
-        ["/ethdev/stats," + json.dumps({"port_id": p}) for p in ports]
-        + ["/ethdev/link_status," + json.dumps({"port_id": p}) for p in ports]
-        + ["/mempool/info," + json.dumps({"name": n}) for n in mempool_names]
-        + ["/dmadev/stats," + json.dumps({"dev_id": d}) for d in dma_ids]
+        [f"/ethdev/stats,{p}" for p in ports]
+        + [f"/ethdev/link_status,{p}" for p in ports]
+        + [f"/mempool/info,{n}" for n in mempool_names]
+        + [f"/dmadev/stats,{d}" for d in dma_ids]
         + ["/ipsec/sa/stats"]
     )
     results = telemetry.query_batch(cmds, **kw)
 
     ethdev_stats = {
-        p: results["/ethdev/stats," + json.dumps({"port_id": p})].get(
-            "/ethdev/stats", {}
-        )
+        p: results.get(f"/ethdev/stats,{p}", {}).get("/ethdev/stats", {})
         for p in ports
     }
     ethdev_link = {
-        p: results["/ethdev/link_status," + json.dumps({"port_id": p})].get(
-            "/ethdev/link_status", {}
-        )
+        p: results.get(f"/ethdev/link_status,{p}", {}).get("/ethdev/link_status", {})
         for p in ports
     }
     mempool_stats = {
-        n: results["/mempool/info," + json.dumps({"name": n})].get("/mempool/info", {})
+        n: results.get(f"/mempool/info,{n}", {}).get("/mempool/info", {})
         for n in mempool_names
     }
     dma_stats = {
-        d: results["/dmadev/stats," + json.dumps({"dev_id": d})].get(
-            "/dmadev/stats", {}
-        )
+        d: results.get(f"/dmadev/stats,{d}", {}).get("/dmadev/stats", {})
         for d in dma_ids
     }
-    ipsec_stats = results["/ipsec/sa/stats"].get("/ipsec/sa/stats", {})
+    ipsec_stats = results.get("/ipsec/sa/stats", {}).get("/ipsec/sa/stats", {})
 
     return {
-        "is_alive": is_dpdk_alive(file_prefix or "rte"),  # DPDK 实例是否存活
-        "ethdev_stats": ethdev_stats,  # 网卡统计 用于 丢包分析 吞吐监控 网卡异常检测
-        "ethdev_link": ethdev_link,  # 链路状态
-        "mempool_stats": mempool_stats,  # 内存池 用于 内存泄漏检测 buffer 是否耗尽 RX 无法分配 mbuf
-        "dma_stats": dma_stats,  # DMA设备 性能优化 DMA失败排查
-        "ipsec_stats": ipsec_stats,  # IPsec 安全统计
+        "is_alive": is_dpdk_alive(file_prefix or "rte"),
+        "ethdev_stats": ethdev_stats,
+        "ethdev_link": ethdev_link,
+        "mempool_stats": mempool_stats,
+        **({"dma_stats": dma_stats}   if dma_ids   else {}),
+        **({"ipsec_stats": ipsec_stats} if ipsec_stats else {}),
     }
 
 
 def poll_5s(file_prefix=None, instance=None):
-    """
-    Every 5 seconds, collects the DPDK application statistics, such as port xstats and core list.
-    """
     kw = dict(file_prefix=file_prefix, instance=instance)
 
     pre = telemetry.query_batch(
@@ -161,58 +148,47 @@ def poll_5s(file_prefix=None, instance=None):
     nix_list = pre["/cnxk/nix/list"].get("/cnxk/nix/list", [])
 
     cmds = (
-        ["/ethdev/xstats," + json.dumps({"port_id": p}) for p in ports]
-        + ["/eal/lcore/usage," + json.dumps({"lcore_id": l}) for l in lcore_list]
-        + ["/eal/heap_info," + json.dumps({"heap_id": h}) for h in heap_list]
-        + ["/eventdev/dev_xstats," + json.dumps({"dev_id": d}) for d in dev_list]
-        + ["/cnxk/nix/info," + json.dumps({"nix_id": n}) for n in nix_list]
+        [f"/ethdev/xstats,{p}" for p in ports]
+        + [f"/eal/lcore/usage,{l}" for l in lcore_list]
+        + [f"/eal/heap_info,{h}" for h in heap_list]
+        + [f"/eventdev/dev_xstats,{d}" for d in dev_list]
+        + [f"/cnxk/nix/info,{n}" for n in nix_list]
     )
     results = telemetry.query_batch(cmds, **kw)
 
     xstats = {}
     for port_id in ports:
-        raw = results["/ethdev/xstats," + json.dumps({"port_id": port_id})].get(
-            "/ethdev/xstats", []
-        )
-        xstats[port_id] = (
-            {item["name"]: item["value"] for item in raw}
-            if isinstance(raw, list)
-            else raw
-        )
+        raw = results.get(f"/ethdev/xstats,{port_id}", {}).get("/ethdev/xstats", {})
+        # xstats 可能是 list[{name, value}] 或直接是 dict，两种都处理
+        if isinstance(raw, list):
+            xstats[port_id] = {item["name"]: item["value"] for item in raw}
+        else:
+            xstats[port_id] = raw  # 已经是 dict（你的版本就是 dict）
 
     lcore_usage = {
-        l: results["/eal/lcore/usage," + json.dumps({"lcore_id": l})].get(
-            "/eal/lcore/usage", {}
-        )
+        l: results.get(f"/eal/lcore/usage,{l}", {}).get("/eal/lcore/usage", {})
         for l in lcore_list
     }
     heap_stats = {
-        h: results["/eal/heap_info," + json.dumps({"heap_id": h})].get(
-            "/eal/heap_info", {}
-        )
+        h: results.get(f"/eal/heap_info,{h}", {}).get("/eal/heap_info", {})
         for h in heap_list
     }
     eventdev_stats = {
-        d: results["/eventdev/dev_xstats," + json.dumps({"dev_id": d})].get(
-            "/eventdev/dev_xstats", {}
-        )
+        d: results.get(f"/eventdev/dev_xstats,{d}", {}).get("/eventdev/dev_xstats", {})
         for d in dev_list
     }
     nix_stats = {
-        n: results["/cnxk/nix/info," + json.dumps({"nix_id": n})].get(
-            "/cnxk/nix/info", {}
-        )
+        n: results.get(f"/cnxk/nix/info,{n}", {}).get("/cnxk/nix/info", {})
         for n in nix_list
     }
 
     return {
-        "ethdev_xstats": xstats,  # 高级扩展网卡统计
-        "lcore_usage": lcore_usage,  # CPU 核使用情况
-        "heap_stats": heap_stats,  # DPDK 内存堆
-        "eventdev_stats": eventdev_stats,  # 事件设备
-        "nix_stats": nix_stats,  # Marvell 网卡 CNXK架构 的专用统计
+        "ethdev_xstats": xstats,
+        "lcore_usage": lcore_usage,
+        "heap_stats": heap_stats,
+        **({"eventdev_stats": eventdev_stats} if dev_list  else {}),
+        **({"nix_stats": nix_stats}         if nix_list else {}),
     }
-
 
 def check_devbind_on_anomaly():
     """
@@ -264,10 +240,12 @@ class DPDKLiveMonitor:
         self.instances = instances or []
 
     def _make_key(self, instance: dict):
+        pid = instance.get("pid")
+        instance_id = instance.get("instance")
         return (
-            instance.get("pid"),
+            int(pid) if pid is not None else None,
             instance.get("file_prefix"),
-            instance.get("instance"),
+            int(instance_id) if instance_id is not None else None,
         )
 
     def _store(self, data):
@@ -288,7 +266,9 @@ class DPDKLiveMonitor:
         file_prefix = instance.get("file_prefix")
         instance_id = instance.get("instance")
 
-        ident = {}
+        ident = {
+            "pid": pid
+        }
 
         while not stop_event.is_set() and not self._global_stop.is_set():
             t0 = time.time()
@@ -430,3 +410,29 @@ class DPDKLiveMonitor:
 
         for worker in workers:
             worker["thread"].join(timeout=5)
+
+
+_monitor_instance: DPDKLiveMonitor | None = None
+_monitor_lock = threading.Lock()
+
+
+def get_monitor(config=None, intances=None) -> DPDKLiveMonitor:
+    """
+    返回全局唯一的 DPDKLiveMonitor 实例。
+    仅第一次调用时 config 和 instances 生效，后续调用直接返回已有实例。
+    """
+    global _monitor_instance
+    if _monitor_instance is None:
+        with _monitor_lock:
+            if _monitor_instance is None:
+                _monitor_instance = DPDKLiveMonitor(config, intances)
+                _monitor_instance.start()
+    return _monitor_instance
+
+
+def shutdown_monitor():
+    global _monitor_instance
+    with _monitor_lock:
+        if _monitor_instance is not None:
+            _monitor_instance.stop()
+            _monitor_instance = None

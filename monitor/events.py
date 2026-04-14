@@ -132,11 +132,11 @@ def sync_instances_loop(config, dpdk_monitor):
     """
     Sync the DPDK monitor with the current running instances at regular intervals.
     """
-
     def _sync():
-        dpdk_monitor.sync_instances(get_monitor_manager().read_running_instances_info())
+        running_instances = get_monitor_manager().read_running_instances_info()
+        dpdk_monitor.sync_instances(running_instances)
 
-    schedule.every(config.schedule_clean_crashed_core_interval + 5).seconds.do(_sync)
+    schedule.every(config.schedule_heartbeat_interval - 5).seconds.do(_sync)
 
     while True:
         schedule.run_pending()

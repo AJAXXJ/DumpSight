@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from config import config
 from monitor.dpdk_tools.dpdk_telemetry import test_telemetry_connection
+from monitor.live_monitor import get_monitor
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_register, client_status
 from monitor.daemon import install_systemd_service, run_daemon, systemctl
@@ -261,12 +262,10 @@ def monitor(dpdk_running_args, file_prefix, instance, log):
     except Exception as e:
         click.echo(f"telemetry failed: {e}")
         monitor_manager.update_status_if_running(pid, "stop")
-
+    
 
 @click.command()
-@click.option(
-    "--pid", prompt="Enter PID", help="Stop the PID DPDK app."
-)
+@click.option("--pid", prompt="Enter PID", help="Stop the PID DPDK app.")
 def stop(pid):
     pass
 

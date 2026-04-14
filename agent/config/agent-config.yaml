@@ -1,14 +1,15 @@
 llm:
-  fast_model: glm-4.5
-  strong_model: glm-4.5
+  fast_model: glm-4.5-air
+  strong_model: glm-4.5-air
+  embedding_model: 
   temperature: 0.0
   max_tokens: 4096
   timeout: 60
   max_retries: 3
 
 api_keys:
-  openai_api_key: "d4a1046e4d894de9801e1b7d6924eb91.13WydelxpTCEigL1"
-  openai_api_base: "https://open.bigmodel.cn/api/paas/v4/"
+  openai_api_key: "sk-635395661b8244079ad92fceff508526"
+  openai_api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 vector_store:
   type: chroma

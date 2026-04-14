@@ -1,0 +1,15 @@
+DPDK crash 案例：
+
+信号={{ signal_name }}
+崩溃类型={{ crash_type }}
+
+崩溃函数={{ crash_function }}
+调用路径={{ main_path }}
+
+{% if missing_libs %}
+缺失库={{ missing_libs | join("，") }}
+{% endif %}
+
+{% if dpdk_subsystems %}
+子系统={{ dpdk_subsystems | join("，") }}
+{% endif %}

@@ -114,7 +114,7 @@ class ReportFormatter:
                     "case_id":     c.get("case_id"),
                     "root_cause":  c.get("root_cause"),
                     "score":       round(c.get("score", 0.0), 4),
-                    "fix_summary": c.get("fix_summary"),
+                    "repair_steps": c.get("repair_steps"),
                 }
                 for c in state.get("retrieved_cases", [])
             ],

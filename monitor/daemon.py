@@ -2,7 +2,7 @@ import sys
 import click
 import subprocess
 import threading
-from monitor.live_monitor import DPDKLiveMonitor
+from monitor.live_monitor import get_monitor, shutdown_monitor
 from monitor.monitor_manager import get_monitor_manager
 from monitor.request import client_heartbeat
 from monitor.events import (
@@ -58,17 +58,14 @@ def systemctl(action):
     subprocess.run(["systemctl", action, "dumpsight"], check=True)
 
 
-
 def run_daemon(config):
     """
     Runs the DumpSight monitor in daemon mode.
     """
     # Initialize the DPDK monitor with the current running instances
-    dpdk_monitor = DPDKLiveMonitor(
-        config=config,
-        instances=get_monitor_manager().read_running_instances_info(),
+    dpdk_monitor = get_monitor(
+        config, get_monitor_manager().read_running_instances_info()
     )
-    dpdk_monitor.start()
 
     threads = [
         threading.Thread(
@@ -97,5 +94,5 @@ def run_daemon(config):
     for t in threads:
         t.join()
 
-    dpdk_monitor.stop()
+    shutdown_monitor()
     client_heartbeat(config, batch=dpdk_monitor.flush())

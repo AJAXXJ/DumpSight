@@ -1,6 +1,7 @@
 import logging
 import uuid
 from langchain_core.output_parsers import StrOutputParser
+from agent.case_library.pipline import retriever_top_k_case
 from agent.config.llm_factory import get_llm
 from agent.config.settings import get_settings
 from agent.output.output_formatter import (
@@ -10,7 +11,6 @@ from agent.output.output_formatter import (
     RepairSteps,
     output_json_parse,
 )
-# from agent.case_library.retriever import CaseRetriever
 from agent.output.report_formatter import ReportFormatter
 from agent.prompts.prompt_builder import PromptBuilder
 from agent.prompts.prompt_registry import get_registry
@@ -22,7 +22,6 @@ settings = get_settings()
 
 _llm = get_llm()
 _builder = PromptBuilder(registry=get_registry(settings.prompt_version))
-# _retriever = CaseRetriever()
 _tools = get_tools()
 
 
@@ -74,13 +73,10 @@ def node_retrieve_cases(state, config):
     logger.info("node_retrieve_cases | run_id=%s", state.get("run_id"))
 
     try:
-        # TODO 检索匹配案例
-        # cases = _retriever.search(
-        #     query=state["core_info"],
-        #     dpdk_version=state["client_info"].get("dpdk_version"),
-        #     top_k=settings.retriever_top_k,
-        # )
-        cases = []
+        cases = retriever_top_k_case(
+            state=state,
+            top_k=settings.retriever_top_k,
+        )
     except Exception as exc:
         logger.warning("case retrieval failed, continuing without cases | %s", exc)
         cases = []  # 检索失败不中断流程，降级为无历史案例模式

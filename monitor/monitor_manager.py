@@ -6,6 +6,7 @@ from tools.redis_util import get_redis_util, RedisConfig
 from config import config
 import threading
 
+
 class RedisMonitorManager:
 
     def __init__(self, config):
@@ -13,11 +14,10 @@ class RedisMonitorManager:
         self.client_id = str(config.client_id)
         self.info_prefix = f"{self.client_id}:info"
 
-        self.redis = get_redis_util(RedisConfig.from_config(config)) 
+        self.redis = get_redis_util(RedisConfig.from_config(config))
 
     def _info_key(self, pid):
         return f"{self.info_prefix}:{pid}"
-        
 
     def read_monitor_list(self):
         """
@@ -64,7 +64,7 @@ class RedisMonitorManager:
         """
         pid = str(pid)
         existing = self.get_pid_info(pid)
-        
+
         if existing:
             if existing.get("status") == "crashed":
                 return
@@ -72,7 +72,6 @@ class RedisMonitorManager:
                 self.redis.delete(self._info_key(pid))
 
         self.redis.set(self._info_key(pid), json.dumps(info))
-
 
     def update_status_if_running(self, pid, new_status):
         """只有当前是 running 才更新状态"""
@@ -83,7 +82,6 @@ class RedisMonitorManager:
             self.redis.set(self._info_key(pid), json.dumps(existing))
             return True
         return False
-
 
     def set_pid_status(self, pid, status):
         """
@@ -98,7 +96,6 @@ class RedisMonitorManager:
         info["status"] = status
         self.redis.set(self._info_key(pid), json.dumps(info))
         return info
-
 
     def clean_status_info(self, status):
         """
@@ -138,7 +135,6 @@ class RedisMonitorManager:
         if keys_to_delete:
             self.redis.delete_many(keys_to_delete)
 
-
     def set_preprocess_core_info(self, pid, preprocess_info):
         """
         Set preprocess dump core info in redis.
@@ -149,7 +145,6 @@ class RedisMonitorManager:
 
         key = f"{self.client_id}:core:{pid}:{timestamp}"
         self.redis.set(key, json.dumps(preprocess_info), expire=ttl)
-
 
     def flush_dpdk_batch(self, batch):
         """
@@ -168,29 +163,29 @@ class RedisMonitorManager:
             key = f"{self.client_id}:log:{pid}:{record_type}:{timestamp_second}"
             self.redis.set(key, json.dumps(record), expire=ttl)
 
-
     def read_running_instances_info(self):
         """
         Read information about running DPDK instances from the monitor file.
         """
         instances = []
-        running_apps_info = self.read_monitor_list_by_status(
-            status="running"
-        )
+        running_apps_info = self.read_monitor_list_by_status(status="running")
         for pid, info in running_apps_info:
             instances.append(
                 {
-                    "pid": pid,
+                    "pid": int(pid) if pid is not None else None,
                     "exe_name": info.get("exe_name"),
                     "file_prefix": info.get("file_prefix"),
-                    "instance": info.get("instance"),
+                    "instance": (
+                        int(info["instance"]) if info.get("instance") is not None else 0
+                    ),
                 }
             )
         return instances
-    
+
 
 _monitor_manager = None
 _monitor_lock = threading.Lock()
+
 
 def get_monitor_manager() -> RedisMonitorManager:
     global _monitor_manager

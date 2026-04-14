@@ -1,0 +1,12 @@
+DPDK程序在 {{ crash_function }} 发生崩溃，
+信号为 {{ signal_name }}，类型为 {{ crash_type }}。
+
+调用路径为 {{ main_path }}。
+
+{% if missing_libs %}
+怀疑与缺失 {{ missing_libs | join("，") }} 有关，
+{% endif %}
+
+{% if dpdk_subsystems %}
+涉及 {{ dpdk_subsystems | join("，") }} 子系统，
+{% endif %}
