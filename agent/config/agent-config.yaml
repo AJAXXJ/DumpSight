@@ -1,7 +1,6 @@
 llm:
-  fast_model: glm-4.5-air
-  strong_model: glm-4.5-air
-  embedding_model: 
+  fast_model: qwen3.5-flash
+  strong_model: qwen3.6-plus
   temperature: 0.0
   max_tokens: 4096
   timeout: 60
@@ -23,8 +22,7 @@ vector_store:
     collection: dpdk_cases
 
 embedding:
-  model: text-embedding-3-small
-  dim: 1536
+  model: text-embedding-v4
 
 metadata_db:
   url: sqlite:///./case_library.db

@@ -5,7 +5,7 @@ def add_client_info(client_id, environment):
 
     client_info = ClientInfo.create(client_id=client_id, environment=environment)
 
-    return client_info.id
+    return client_info['id']
 
 
 def update_client_heartbeat(client_id):

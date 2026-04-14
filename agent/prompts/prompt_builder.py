@@ -66,14 +66,7 @@ class PromptBuilder:
         )
 
     # 故障分析 Graph 节点：root_cause_reasoning
-    def build_fault_analysis(
-        self,
-        *,
-        client_info,
-        dpdk_info,
-        core_info,
-        similar_cases
-    ):
+    def build_fault_analysis(self, *, client_info, dpdk_info, core_info, similar_cases):
         """
         构建故障根因分析 prompt。
 
@@ -165,14 +158,20 @@ class PromptBuilder:
     def build_case_ingestion(
         self,
         *,
-        raw_crash_log,
-        core_analysis,
-        client_meta,
+        signal_name,
+        crash_type,
+        crash_function,
+        main_path,
+        missing_libs,
+        dpdk_subsystems
     ):
         variables = {
-            "raw_crash_log": raw_crash_log,
-            "core_analysis": core_analysis,
-            "client_meta": client_meta,
+            "signal_name": signal_name,
+            "crash_type": crash_type,
+            "crash_function": crash_function,
+            "main_path": main_path,
+            "missing_libs": missing_libs,
+            "dpdk_subsystems": dpdk_subsystems,
             "few_shots": [],
         }
         return self._build(

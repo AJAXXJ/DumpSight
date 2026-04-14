@@ -1,7 +1,8 @@
 import logging
 import uuid
 from langchain_core.output_parsers import StrOutputParser
-from agent.case_library.pipline import retriever_top_k_case
+
+from agent.case_library.rag import get_rag
 from agent.config.llm_factory import get_llm
 from agent.config.settings import get_settings
 from agent.output.output_formatter import (
@@ -66,6 +67,33 @@ def node_fetch_data(state, config):
     }
 
 
+def get_retrieve_description(state, config):
+    messages, meta = _builder.build_case_ingestion(
+        signal_name=state["core_info"]["meta"]["signal_name"],
+        crash_type=state["core_info"]["meta"]["parsed_gdb_output"]["crash_type"],
+        crash_function=state["core_info"]["meta"]["parsed_gdb_output"][
+            "call_chain_graph"
+        ]["crash_function"],
+        main_path=state["core_info"]["meta"]["parsed_gdb_output"]["call_chain_llm"][
+            "main_path"
+        ],
+        missing_libs=state["core_info"]["meta"]["parsed_gdb_output"]["shared_libs"][
+            "missing_libs"
+        ],
+        dpdk_subsystems=state["core_info"]["meta"]["parsed_gdb_output"][
+            "dpdk_subsystems"
+        ],
+    )
+
+    try:
+        response = _llm.invoke(messages, config=config)
+        raw_text = StrOutputParser().invoke(response)
+    except Exception as exc:
+        logger.warning("生成检索描述失败 | %s", exc)
+        raw_text = ""
+    state["description"] = raw_text
+
+
 def node_retrieve_cases(state, config):
     """
     以 core_info + dpdk_version 为查询，检索历史相似案例。
@@ -73,16 +101,14 @@ def node_retrieve_cases(state, config):
     logger.info("node_retrieve_cases | run_id=%s", state.get("run_id"))
 
     try:
-        cases = retriever_top_k_case(
-            state=state,
-            top_k=settings.retriever_top_k,
-        )
+        get_retrieve_description(state, config)
+        cases = get_rag().search(state=state)
     except Exception as exc:
         logger.warning("case retrieval failed, continuing without cases | %s", exc)
         cases = []  # 检索失败不中断流程，降级为无历史案例模式
 
     logger.info("retrieved %d cases | run_id=%s", len(cases), state.get("run_id"))
-    return {"retrieved_cases": cases}
+    return {"retrieved_cases": cases, "description": state["description"]}
 
 
 def node_root_cause_reasoning(state, config):
@@ -151,18 +177,57 @@ def node_repair_suggestion(state, config):
     return {"repair_steps": result.repair_steps, "prompt_meta": meta.as_log_dict()}
 
 
+def should_add_case(confidence, retrieved_cases, threshold=0.9):
+    if confidence.lower() not in ["高", "high"]:
+        return False
+
+    if not retrieved_cases:
+        return True
+
+    top_score = float(retrieved_cases[0].get("score", 0.0))
+    return top_score < threshold
+
+
 def node_generate_report(state, config):
     """
-    将分析结果格式化为 Markdown 报告，写入 state["report"]。
-    纯字符串拼接，不再调用 LLM，保证确定性输出。
+    将分析结果格式化 并进行案例入库
     """
     logger.info("node_generate_report | run_id=%s", state.get("run_id"))
 
+    # 格式化输出
     formatter = ReportFormatter()
-    md   = formatter.to_markdown(state)
-    data = formatter.to_json(state)
-    
-    return {"md_report": md.strip(), "json_report": data, "error": ""}
+    md_report = formatter.to_markdown(state)
+    json_report = formatter.to_json(state)
+    # 案例入库
+    confidence = state["confidence"].lower()
+    retrieved_cases = state.get("retrieved_cases", [])
+
+    if should_add_case(confidence, retrieved_cases):
+        get_rag().add_case(
+            {
+                "case_id": state["run_id"],
+                "signal_name": state["core_info"]["meta"]["signal_name"],
+                "crash_type": state["core_info"]["meta"]["parsed_gdb_output"][
+                    "crash_type"
+                ],
+                "crash_function": state["core_info"]["meta"]["parsed_gdb_output"][
+                    "call_chain_graph"
+                ]["crash_function"],
+                "main_path": state["core_info"]["meta"]["parsed_gdb_output"][
+                    "call_chain_llm"
+                ]["main_path"],
+                "missing_libs": state["core_info"]["meta"]["parsed_gdb_output"][
+                    "shared_libs"
+                ]["missing_libs"],
+                "dpdk_subsystems": state["core_info"]["meta"]["parsed_gdb_output"][
+                    "dpdk_subsystems"
+                ],
+                "root_cause": state["root_cause"],
+                "repair_steps": state["repair_steps"],
+                "description": state["description"],
+            }
+        )
+    return {"md_report": md_report, "json_report": json_report, "error": ""}
 
 
 def node_handle_error(state, config):

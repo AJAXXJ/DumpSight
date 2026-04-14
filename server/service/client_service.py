@@ -29,9 +29,8 @@ def client_register_service(client_register_info):
 
     if get_client_info(client_id):
         raise ValueError(f"Client {client_id} already exists")
-    
-    add_client_info(client_id, environment)
 
+    add_client_info(client_id, environment)
 
 
 def client_heartbeat_service(heartbeat_info):
@@ -87,5 +86,10 @@ def client_core_analyse_service(crash_info):
     total_time = core_info.get("process_time") + analyse_time
 
     add_core_info(
-        client_id, json_report, core_info.get("process_time"), analyse_time, total_time
+        client_id,
+        md_report,
+        json_report,
+        core_info.get("process_time"),
+        analyse_time,
+        total_time,
     )

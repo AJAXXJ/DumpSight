@@ -1,13 +1,29 @@
-# 案例入库
+分析以下 DPDK 崩溃信息：
 
-## 原始日志
-{{ raw_crash_log }}
+必须包含：
+- 崩溃函数：{{ crash_function | default("未知") }}
+- 信号类型：{{ signal_name | default("未知") }}
+- 崩溃类型：{{ crash_type | default("未知") }}
+- 调用路径：{{ main_path | default("未知") }}
 
-## 分析结果
-{{ core_analysis }}
+{% if missing_libs and missing_libs | length > 0 %}
+- 缺失库：{{ missing_libs | join("，") }}
+{% else %}
+- 缺失库：无
+{% endif %}
 
-## 客户信息
-{{ client_meta }}
+{% if dpdk_subsystems and dpdk_subsystems | length > 0 %}
+- DPDK子系统：{{ dpdk_subsystems | join("，") }}
+{% else %}
+- DPDK子系统：无
+{% endif %}
 
-## 任务
-将数据结构化为可检索的案例记录
+要求：
+- 必须使用中文输出
+- 不解释原因
+- 不做推理或修复建议
+- 不输出结构化格式（如 JSON）
+- 输出必须是一段连续文本
+- 信息缺失用“未知/无”表示
+- 保持适合语义检索的紧凑表达
+- 不输出除描述其他文本

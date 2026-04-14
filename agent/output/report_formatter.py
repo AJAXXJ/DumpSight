@@ -113,7 +113,7 @@ class ReportFormatter:
                 {
                     "case_id":     c.get("case_id"),
                     "root_cause":  c.get("root_cause"),
-                    "score":       round(c.get("score", 0.0), 4),
+                    "score":       round(float(c.get("score", 0.0)), 4),
                     "repair_steps": c.get("repair_steps"),
                 }
                 for c in state.get("retrieved_cases", [])
@@ -251,11 +251,9 @@ def _md_summary(state: DPDKDiagnosisState) -> str:
 
 
 def _md_environment(state: DPDKDiagnosisState) -> str:
-    client_info = state.get("client_info", {})
-
     # meta
-    hostname = client_info.get("hostname", "N/A")
-    os = client_info.get("os", "N/A")
+    hostname = _get(state, "client_info", "environment", "hostname", default="N/A")
+    os = _get(state, "client_info", "environment", "os", default="N/A")
 
     # hugepage
     hugepage = _get(state, "client_info", "environment", "hugepage", default="N/A")
@@ -411,15 +409,16 @@ def _md_similar_cases(state: DPDKDiagnosisState) -> str:
 
     rows = "\n".join(
         f"| `{c.get('case_id','?')}` "
+        f"| `{c.get('description','?')}` "
         f"| {c.get('root_cause','')[:60]} "
         f"| {c.get('score', 0):.2f} "
-        f"| {c.get('fix_summary','')[:60]} |"
+        f"| {'；'.join(c.get('repair_steps', []))[:60]} |"
         for c in cases
     )
     return (
         "## 参考历史案例\n\n"
-        "| 案例 ID | 根因 | 相似度 | 修复摘要 |\n"
-        "|---------|------|--------|----------|\n" + rows
+        "| 案例 ID | 描述 | 根因  | 相似度  | 修复步骤 |\n"
+        "|---------|------|------|--------|----------|\n" + rows
     )
 
 

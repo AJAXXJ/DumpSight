@@ -3,9 +3,9 @@ from sqlalchemy import JSON, Boolean, Column, Integer, String
 from server.models.base_model import BaseModel
 
 
-class CrashCaseMeta(BaseModel):
+class CaseInfo(BaseModel):
 
-    __tablename__ = "crash_case_meta"
+    __tablename__ = "case_info"
     
     __table_args__ = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}
 
@@ -19,7 +19,7 @@ class CrashCaseMeta(BaseModel):
 
     crash_function = Column(String(255), nullable=True)
 
-    dpdk_lib_missing = Column(Boolean, nullable=True)
+    main_path = Column(String(255), nullable=True)
 
     dpdk_subsystems = Column(JSON, nullable=True)
     
@@ -28,6 +28,8 @@ class CrashCaseMeta(BaseModel):
     root_cause = Column(String(255), nullable=True)
 
     repair_steps = Column(JSON,  nullable=True)
+
+    description = Column(String(255), nullable=True)
 
 
 

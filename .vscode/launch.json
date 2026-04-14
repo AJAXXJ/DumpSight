@@ -8,7 +8,7 @@
             "name": "server-test",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "test.py",
             "console": "integratedTerminal"
         }
     ]

@@ -7,8 +7,9 @@ from agent.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+
 @lru_cache(maxsize=2)
-def get_llm(mode = "fast"):
+def get_llm(mode="fast"):
     """
     获取 LLM：
         fast   → 低成本 / 高吞吐（Agent / 工具调用）
@@ -33,15 +34,14 @@ def get_llm(mode = "fast"):
     )
 
     return ChatOpenAI(
-        model        = model,
-        temperature  = settings.llm_temperature,
-        max_tokens   = settings.llm_max_tokens,
-        timeout      = settings.llm_timeout,
-        max_retries  = settings.llm_max_retries,
-
+        model=model,
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        timeout=settings.llm_timeout,
+        max_retries=settings.llm_max_retries,
         # 第三方网关关键参数
-        api_key      = settings.openai_api_key or "EMPTY",
-        base_url     = settings.openai_api_base,
+        api_key=settings.openai_api_key or "EMPTY",
+        base_url=settings.openai_api_base,
     )
 
 
@@ -58,11 +58,12 @@ def get_embedding():
         settings.embedding_model,
     )
 
-
     return OpenAIEmbeddings(
-        model    = settings.embedding_model,
-        api_key  = settings.openai_api_key or "EMPTY",
-        base_url = settings.openai_api_base,
+        model=settings.embedding_model,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base,
+        check_embedding_ctx_length=False,
+        tiktoken_enabled=False,
     )
 
 

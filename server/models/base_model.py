@@ -44,6 +44,13 @@ class BaseModel(Base):
             return [obj.to_dict() for obj in objs]
 
     @classmethod
+    def in_filter(cls, field: str, values: list):
+        with get_mysql_util().session_scope() as session:
+            col = getattr(cls, field)
+            objs = session.query(cls).filter(col.in_(values)).all()
+            return [obj.to_dict() for obj in objs]
+    
+    @classmethod
     def all(cls):
         with get_mysql_util().session_scope() as session:
             objs = session.query(cls).all()

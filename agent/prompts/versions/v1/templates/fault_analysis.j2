@@ -12,7 +12,15 @@ DPDK 信息：
 {% if similar_cases %}
 相似历史案例：
 {% for case in similar_cases %}
-- 案例 ID: {{ case.id }} | 摘要: {{ case.summary }}
+案例 ID: {{ case.case_id }}
+
+相似度 score: {{ case.score }}
+
+案例描述: {{ case.description }}
+
+案例根因: {{ case.root_cause }}
+
+修复步骤: {{ case.repair_steps }}
 {% endfor %}
 {% endif %}
 
@@ -40,3 +48,4 @@ DPDK 信息：
 - 所有字段必须存在
 - repair_steps 和 call_chain 必须是数组
 - confidence 只能是 high / medium / low
+- 必须使用中文输出

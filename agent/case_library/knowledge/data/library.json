@@ -1,0 +1,23 @@
+[
+    {
+        "case_id": "3f1c2b6e-7a5d-4c9a-9c2f-2d8a1f6e9b11",
+        "signal_name": "SIGSEGV",
+        "crash_type": "null_pointer_dereference",
+        "crash_function": "rte_eth_tx_burst",
+        "main_path": "main → rte_pktmbuf_alloc → rte_mbuf_raw_alloc",
+        "missing_libs": [
+            "librte_malloc"
+        ],
+        "dpdk_subsystems": [
+            "mempool",
+            "mbuf"
+        ],
+        "description": "PDK 应用遭遇 SIGSEGV 信号崩溃，错误类型 null_pointer_deref 发生于函数 rte_mbuf_raw_alloc，调用路径 main 至 rte_pktmbuf_alloc 至 rte_mbuf_raw_alloc，系统缺失 librte_malloc 库，受影响子系统 mempool 和 mbuf",
+        "root_cause": "tx buffer未初始化导致空指针访问",
+        "repair_steps": [
+            "检查mbuf初始化流程",
+            "增加空指针保护",
+            "修复tx queue分配逻辑"
+        ]
+    }
+]

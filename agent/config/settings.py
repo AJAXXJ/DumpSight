@@ -16,7 +16,6 @@ class Settings:
         llm = cfg.get("llm", {})
         self.llm_fast_model = llm.get("fast_model", "")
         self.llm_strong_model = llm.get("strong_model", "")
-        self.embedding_model = llm.get("embedding_modle", "")
         self.llm_temperature = llm.get("temperature", 0.0)
         self.llm_max_tokens = llm.get("max_tokens", 4096)
         self.llm_timeout = llm.get("timeout", 60)
@@ -51,7 +50,6 @@ class Settings:
         # Embedding
         emb = cfg.get("embedding", {})
         self.embedding_model = emb.get("model", "text-embedding-3-small")
-        self.embedding_dim = emb.get("dim", 1536)
 
         # Metadata DB
         self.metadata_db_url = cfg.get("metadata_db", {}).get(
