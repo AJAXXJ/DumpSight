@@ -55,8 +55,9 @@ class FaissStore:
                     ),
                     metadata={
                         "case_id": case["case_id"],
-                        "signal_name": case["signal_name"],
-                        "crash_type": case["crash_type"],
+                        "signal_name": case.get("signal_name"),
+                        "crash_type": case.get("crash_type"),
+                        "anomaly_flags": case.get("anomaly_flags", []),
                     },
                 )
                 for case in cases
@@ -107,8 +108,9 @@ class FaissStore:
                 ),
                 metadata={
                     "case_id": case["case_id"],
-                    "signal_name": case["signal_name"],
-                    "crash_type": case["crash_type"],
+                    "signal_name": case.get("signal_name"),
+                    "crash_type": case.get("crash_type"),
+                    "anomaly_flags": case.get("anomaly_flags", []),
                 },
             )
 
@@ -144,8 +146,9 @@ class FaissStore:
                     ),
                     metadata={
                         "case_id": case["case_id"],
-                        "signal_name": case["signal_name"],
-                        "crash_type": case["crash_type"],
+                        "signal_name": case.get("signal_name"),
+                        "crash_type": case.get("crash_type"),
+                        "anomaly_flags": case.get("anomaly_flags", []),
                     },
                 )
                 docs.append(doc)

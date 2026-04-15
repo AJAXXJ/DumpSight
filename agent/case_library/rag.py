@@ -56,16 +56,13 @@ class RAG:
             cases.append(
                 {
                     "score": score_map.get(case_id, 0.0),
-
                     "case_id": case_id,
                     "signal_name": meta_case["signal_name"],
                     "crash_type": meta_case["crash_type"],
-
                     "crash_function": meta_case["crash_function"],
                     "main_path": meta_case["main_path"],
                     "missing_libs": meta_case["missing_libs"],
                     "dpdk_subsystems": meta_case["dpdk_subsystems"],
-    
                     "root_cause": meta_case["root_cause"],
                     "repair_steps": meta_case["repair_steps"],
                     "description": meta_case["description"],
@@ -78,21 +75,24 @@ class RAG:
         return cases
 
     def add_case(self, case):
-        if get_case(case['case_id']) is not None:
+        if get_case(case["case_id"]) is not None:
             logger.info(f"ID 为: {case['case_id']} 案例已存在")
 
         # 数据库插入
         add_case(
             case_id=case["case_id"],
-            signal_name=case["signal_name"],
-            crash_type=case["crash_type"],
-            crash_function=case["crash_function"],
-            main_path=case["main_path"],
-            dpdk_subsystems=case["dpdk_subsystems"],
-            missing_libs=case["missing_libs"],
             root_cause=case["root_cause"],
             repair_steps=case["repair_steps"],
             description=case["description"],
+            log_feature=case["log_feature"],
+            signal_name=case.get("signal_name"),
+            crash_type=case.get("crash_type"),
+            crash_function=case.get("crash_function"),
+            main_path=case.get("main_path"),
+            dpdk_subsystems=case.get("dpdk_subsystems"),
+            missing_libs=case.get("missing_libs"),
+            reference_feature=case.get("reference_feature"),
+            anomaly_flags=case.get("anomaly_flags"),
         )
 
         # faiss 插入

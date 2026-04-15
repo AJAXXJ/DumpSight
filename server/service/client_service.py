@@ -1,12 +1,12 @@
+import datetime
 from agent.graphs.fault_analysis.graph import get_fault_analysis_graph
-from agent.graphs.live_monitor.graph import get_realtime_monitor_graph
-from agent.main import run_fault_anlyse, run_realtime_monitor
+from agent.main import run_fault_anlyse
 from server.repository.client_redis import (
-    get_client_running_instances,
     get_dpdk_core_info,
 )
 from server.repository.client_repository import (
     add_client_info,
+    get_all_client_info,
     get_client_info,
     update_client_heartbeat,
 )
@@ -42,19 +42,6 @@ def client_heartbeat_service(heartbeat_info):
     if not client_id:
         raise ValueError("Missing required fields in heartbeat_info")
 
-    # 触发日志分析
-    instances = get_client_running_instances(client_id)
-
-    if instances:
-        graph = get_realtime_monitor_graph()
-        for instance in instances:
-            run_realtime_monitor(
-                graph=graph,
-                initial_state={"client_id": client_id, "pid": instance.get("pid")},
-                alert_handler=None,
-                fault_handler=None,
-            )
-
     update_client_heartbeat(client_id)
 
 
@@ -80,16 +67,48 @@ def client_core_analyse_service(crash_info):
         graph, {"client_id": client_id, "pid": pid, "timestamp": timestamp}
     )
 
-    md_report = result["md_report"]
-    json_report = result["json_report"]
+    report = result["report"]
 
     total_time = core_info.get("process_time") + analyse_time
 
     add_core_info(
         client_id,
-        md_report,
-        json_report,
+        report,
         core_info.get("process_time"),
         analyse_time,
         total_time,
     )
+
+
+def is_client_alive(client, timeout=30):
+    """
+    判断客户端是否存活
+    """
+    last = client.get("update_time")
+    if not last:
+        return False
+
+    # 如果是字符串 → 转 datetime
+    if isinstance(last, str):
+        last = datetime.datetime.fromisoformat(last)
+
+    # 如果没有时区 → 补 UTC
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=datetime.timezone.utc)
+
+    # 当前时间（UTC + 带时区）
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    return (now - last).total_seconds() < timeout
+
+
+def client_get_all_alive_info(timeout=30):
+    """
+    获取存活客户端
+    """
+    clients = get_all_client_info()
+
+    return [
+        c for c in clients
+        if is_client_alive(c, timeout)
+    ]

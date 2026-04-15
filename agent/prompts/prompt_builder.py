@@ -66,9 +66,11 @@ class PromptBuilder:
         )
 
     # 故障分析 Graph 节点：root_cause_reasoning
-    def build_fault_analysis(self, *, client_info, dpdk_info, core_info, similar_cases):
+    def build_core_fault_analysis(
+        self, *, client_info, dpdk_info, core_info, log_feature, similar_cases
+    ):
         """
-        构建故障根因分析 prompt。
+        构建故障根因分析 prompt - 崩溃结果
 
         Returns:
             (messages, meta) — messages 可直接传入 LLM.invoke()
@@ -77,12 +79,44 @@ class PromptBuilder:
             "client_info": client_info,
             "dpdk_info": dpdk_info,
             "core_info": core_info,
+            "log_feature": log_feature,
             "similar_cases": similar_cases,
             "few_shots": self._get_few_shots("crash_examples"),
         }
         return self._build(
-            template_key="fault_analysis",
-            system_key="fault_analyst",
+            template_key="core_fault_analysis",
+            system_key="core_fault_analyst",
+            variables=variables,
+        )
+
+    def build_escalation_fault_analysis(
+        self,
+        *,
+        client_info,
+        dpdk_info,
+        log_feature,
+        anomaly_flags,
+        reference_feature,
+        similar_cases,
+    ):
+        """
+        构建故障根因分析 prompt - 恶化结果
+
+        Returns:
+            (messages, meta) — messages 可直接传入 LLM.invoke()
+        """
+        variables = {
+            "client_info": client_info,
+            "dpdk_info": dpdk_info,
+            "anomaly_flags": anomaly_flags,
+            "reference_feature": reference_feature,
+            "log_feature": log_feature,
+            "similar_cases": similar_cases,
+            "few_shots": self._get_few_shots("crash_examples"),
+        }
+        return self._build(
+            template_key="escalation_fault_analysis",
+            system_key="escalation_fault_analyst",
             variables=variables,
         )
 
@@ -110,17 +144,15 @@ class PromptBuilder:
     def build_anomaly_detection(
         self,
         *,
-        metrics_1s,
-        metrics_5s,
-        baseline,
+        log_feature,
+        reference_feature,
         alert_rules,
     ):
         variables = {
-            "metrics_1s": metrics_1s,
-            "metrics_5s": metrics_5s,
-            "baseline": baseline,
+            "log_feature": log_feature,
+            "reference_feature": reference_feature,
             "alert_rules": alert_rules,
-            "few_shots": self._get_few_shots("anomaly_examples"),
+            "few_shots": [],
         }
         return self._build(
             template_key="anomaly_detection",
@@ -135,7 +167,7 @@ class PromptBuilder:
         anomaly_summary,
         severity,  # "critical" | "warning" | "info"
         client_id,
-        metrics_snapshot,
+        log_feature,
     ):
         if severity not in {"critical", "warning", "info"}:
             raise ValueError(
@@ -145,8 +177,8 @@ class PromptBuilder:
             "anomaly_summary": anomaly_summary,
             "severity": severity,
             "client_id": client_id,
-            "metrics_snapshot": metrics_snapshot,
-            "few_shots": [],  # 告警生成不使用 few-shot
+            "log_feature": log_feature,
+            "few_shots": [],
         }
         return self._build(
             template_key="alert_generation",
@@ -163,7 +195,7 @@ class PromptBuilder:
         crash_function,
         main_path,
         missing_libs,
-        dpdk_subsystems
+        dpdk_subsystems,
     ):
         variables = {
             "signal_name": signal_name,

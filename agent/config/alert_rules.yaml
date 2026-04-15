@@ -1,135 +1,260 @@
-# 实时预警规则配置。
-# 每条规则由 realtime_monitor Graph 的异常检测节点加载并执行。
+# 实时预警规则配置
+# metric 字段对应 log_feature 中的 _FEATURE_PATH_MAP 键名
 #
-# 字段说明:
-#   id          : 规则唯一标识，写入告警日志用于溯源
-#   name        : 人类可读名称
-#   severity    : critical | warning | info
-#   metric      : 对应 metrics_1s / metrics_5s 中的字段路径（点分隔）
-#   source      : 1s | 5s，指定从哪个周期的指标取值
-#   condition   : gt | lt | gte | lte | eq | delta_pct（相对基线变化百分比）
-#   threshold   : 触发阈值
-#   cooldown_sec: 同一客户端该规则的冷却时间（秒），覆盖全局设置
-#   description : 告警说明，注入 alert_generation.j2 模板
-#   enabled     : false 可临时关闭规则而不删除
+# 支持的 condition:
+#   gt | lt | gte | lte | eq    绝对阈值
+#   ref_ratio                   当前值 / 参考值 > threshold 倍时触发
+#   ref_delta                   当前值 - 参考值 > threshold 时触发
+#
+# 支持的 metric（对应 _FEATURE_PATH_MAP）:
+#   rx_pps / tx_pps
+#   rx_errors / tx_errors / nombuf / missed
+#   queue_imbalance
+#   mempool_free / heap_free / heap_frag
+#   cpu_avg
+#   risk_score
 
 rules:
 
-  # 内存类
-  - id: MEM_HUGEPAGE_LOW
-    name: 大页内存不足
+  # ── 内存池类 ──────────────────────────────────────────────
+
+  - id: MEMPOOL_CRITICAL
+    name: MBUF内存池严重不足
     severity: critical
-    metric: dpdk.hugepage_free_mb
-    source: 1s
+    metric: mempool_free
     condition: lt
-    threshold: 512
+    threshold: 0.1
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      MBUF内存池空闲率低于10%，即将耗尽。
+      极可能导致报文分配失败并引发崩溃，请立即扩大内存池配置。
+    enabled: true
+
+  - id: MEMPOOL_WARNING
+    name: MBUF内存池空闲不足
+    severity: warning
+    metric: mempool_free
+    condition: lt
+    threshold: 0.3
     cooldown_sec: 120
+    escalate_to_fault: false
     description: >
-      DPDK 可用大页内存低于 512 MB，可能导致内存分配失败并引发崩溃。
-      请检查是否存在内存泄漏或大页配置不足。
+      MBUF内存池空闲率低于30%，存在耗尽风险。
+      建议检查内存池大小配置及报文释放是否正常。
     enabled: true
 
-  - id: MEM_HUGEPAGE_DELTA
-    name: 大页内存快速消耗
+  - id: MEMPOOL_DROP_FAST
+    name: MBUF内存池消耗过快
     severity: warning
-    metric: dpdk.hugepage_free_mb
-    source: 5s
-    condition: delta_pct
-    threshold: -20          # 5s 内下降超过 20%
+    metric: mempool_free
+    condition: ref_ratio
+    threshold: 0.5          # 当前空闲 < 参考期空闲的50%
     cooldown_sec: 60
+    escalate_to_fault: false
     description: >
-      5s 内大页内存消耗超过 20%，存在内存泄漏风险。
+      当前MBUF内存池空闲率相比参考基线下降超过50%，存在内存泄漏风险。
     enabled: true
 
-  # 丢包类
-  - id: PKT_DROP_RATE_HIGH
-    name: 端口丢包率过高
+  # ── 堆内存类 ──────────────────────────────────────────────
+
+  - id: HEAP_CRITICAL
+    name: 堆内存严重不足
     severity: critical
-    metric: dpdk.port_drop_rate_pct
-    source: 1s
-    condition: gt
-    threshold: 5.0          # 丢包率超过 5%
-    cooldown_sec: 30
-    description: >
-      DPDK 端口丢包率超过 5%，网络性能严重劣化。
-      请检查 RX 队列深度、CPU 核心负载及网卡驱动状态。
-    enabled: true
-
-  - id: PKT_DROP_RATE_WARN
-    name: 端口丢包率警告
-    severity: warning
-    metric: dpdk.port_drop_rate_pct
-    source: 5s
-    condition: gt
-    threshold: 1.0
+    metric: heap_free
+    condition: lt
+    threshold: 0.05
     cooldown_sec: 60
+    escalate_to_fault: true
     description: >
-      DPDK 端口丢包率持续超过 1%，建议排查队列配置。
+      堆内存空闲率低于5%，系统即将OOM。
+      请立即检查内存分配/释放是否平衡。
     enabled: true
 
-  # CPU 类
-  - id: CPU_LCORE_BUSY
-    name: 逻辑核心占用率过高
+  - id: HEAP_WARNING
+    name: 堆内存空闲不足
     severity: warning
-    metric: dpdk.lcore_busy_pct
-    source: 1s
-    condition: gt
-    threshold: 95.0
-    cooldown_sec: 30
+    metric: heap_free
+    condition: lt
+    threshold: 0.15
+    cooldown_sec: 120
+    escalate_to_fault: false
     description: >
-      DPDK 逻辑核心（lcore）忙碌率超过 95%，可能导致报文处理延迟。
-      建议检查是否有任务绑核冲突或 busy-poll 循环异常。
+      堆内存空闲率低于15%，建议排查内存使用情况。
     enabled: true
 
-  # 队列类
-  - id: RX_QUEUE_FULL
-    name: RX 队列接近满载
+  - id: HEAP_FRAG_HIGH
+    name: 堆内存碎片率过高
     severity: warning
-    metric: dpdk.rx_queue_fill_pct
-    source: 1s
+    metric: heap_frag
     condition: gt
-    threshold: 90.0
-    cooldown_sec: 30
+    threshold: 0.5
+    cooldown_sec: 300
+    escalate_to_fault: false
     description: >
-      RX 队列填充率超过 90%，即将发生丢包。
-      建议增大队列深度或提高处理线程优先级。
+      堆内存碎片率超过50%，频繁小块分配/释放导致内存利用率下降。
     enabled: true
 
-  - id: TX_QUEUE_STALL
-    name: TX 队列停滞
+  # ── MBUF分配失败类 ────────────────────────────────────────
+
+  - id: NOMBUF_ANY
+    name: MBUF分配失败
     severity: critical
-    metric: dpdk.tx_queue_stall_count
-    source: 1s
+    metric: nombuf
     condition: gt
     threshold: 0
     cooldown_sec: 15
+    escalate_to_fault: true
     description: >
-      TX 队列出现停滞（stall），数据包发送阻塞。
-      通常由下游拥塞或网卡硬件故障引起。
-    enabled: true
-
-  # 错误计数类
-  - id: RX_ERROR_SPIKE
-    name: RX 错误数突增
-    severity: warning
-    metric: dpdk.rx_error_count
-    source: 5s
-    condition: delta_pct
-    threshold: 50           # 5s 内增长超过 50%
-    cooldown_sec: 60
-    description: >
-      RX 错误计数 5s 内增长超过 50%，可能存在链路质量问题或驱动异常。
-    enabled: true
-
-  - id: MBUF_ALLOC_FAIL
-    name: mbuf 分配失败
-    severity: critical
-    metric: dpdk.mbuf_alloc_fail_count
-    source: 1s
-    condition: gt
-    threshold: 0
-    cooldown_sec: 15
-    description: >
-      mbuf 内存池分配失败，下一步极可能发生崩溃。
+      出现MBUF分配失败，内存池已耗尽导致报文丢弃。
       立即检查内存池大小配置（--mbuf-pool-size）。
+    enabled: true
+
+  # ── 丢包类 ────────────────────────────────────────────────
+
+  - id: MISSED_ANY
+    name: 端口丢包
+    severity: warning
+    metric: missed
+    condition: gt
+    threshold: 0
+    cooldown_sec: 30
+    escalate_to_fault: false
+    description: >
+      检测到端口丢包（rx_missed_errors > 0）。
+      请检查RX队列深度、CPU核心负载及网卡驱动状态。
+    enabled: true
+
+  - id: MISSED_SURGE
+    name: 丢包数量异常增长
+    severity: critical
+    metric: missed
+    condition: ref_delta
+    threshold: 100          # 当前窗口丢包比参考基线多100个
+    cooldown_sec: 30
+    escalate_to_fault: false
+    description: >
+      当前窗口丢包数相比参考基线增加超过100个，网络性能严重劣化。
+    enabled: true
+
+  # ── 错误计数类 ────────────────────────────────────────────
+
+  - id: RX_ERROR_ANY
+    name: RX接收错误
+    severity: warning
+    metric: rx_errors
+    condition: gt
+    threshold: 0
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      检测到RX接收错误，可能存在链路质量问题或驱动异常。
+    enabled: true
+
+  - id: RX_ERROR_SURGE
+    name: RX错误数突增
+    severity: critical
+    metric: rx_errors
+    condition: ref_ratio
+    threshold: 3.0          # 当前错误数 > 参考期3倍
+    cooldown_sec: 30
+    escalate_to_fault: false
+    description: >
+      RX错误数相比参考基线增长超过3倍，可能存在链路质量劣化或驱动异常。
+    enabled: true
+
+  - id: TX_ERROR_ANY
+    name: TX发送错误
+    severity: warning
+    metric: tx_errors
+    condition: gt
+    threshold: 0
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      检测到TX发送错误，可能由下游拥塞或网卡硬件故障引起。
+    enabled: true
+
+  # ── CPU类 ─────────────────────────────────────────────────
+
+  - id: CPU_HIGH
+    name: CPU利用率过高
+    severity: warning
+    metric: cpu_avg
+    condition: gt
+    threshold: 0.9          # 90%
+    cooldown_sec: 30
+    escalate_to_fault: false
+    description: >
+      DPDK逻辑核心平均利用率超过90%，可能导致报文处理延迟。
+      建议检查是否有任务绑核冲突或busy-poll循环异常。
+    enabled: true
+
+  - id: CPU_SURGE
+    name: CPU利用率突增
+    severity: warning
+    metric: cpu_avg
+    condition: ref_ratio
+    threshold: 2.0          # 当前CPU > 参考期2倍
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      CPU利用率相比参考基线增长超过2倍，建议排查是否有异常任务抢占核心。
+    enabled: true
+
+  # ── 队列类 ────────────────────────────────────────────────
+
+  - id: QUEUE_SEVERE_SKEW
+    name: 队列严重倾斜
+    severity: warning
+    metric: queue_imbalance
+    condition: gt
+    threshold: 0.5
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      RX队列负载严重倾斜（最大单队列占比超过50%），
+      RSS哈希分布异常，建议检查流量分布及RSS配置。
+    enabled: true
+
+  # ── 流量类 ────────────────────────────────────────────────
+
+  - id: TRAFFIC_SURGE
+    name: 流量突增
+    severity: warning
+    metric: rx_pps
+    condition: ref_ratio
+    threshold: 3.0          # 当前pps > 参考期3倍
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      当前接收流量相比参考基线增长超过3倍，存在流量突增或攻击风险。
+    enabled: true
+
+  # ── 综合风险类 ────────────────────────────────────────────
+
+  - id: RISK_SCORE_HIGH
+    name: 综合风险评分过高
+    severity: warning
+    metric: risk_score
+    condition: gt
+    threshold: 50
+    cooldown_sec: 60
+    escalate_to_fault: false
+    description: >
+      系统综合风险评分超过50分（中风险），多项指标同时异常。
+      建议进行全面排查。
+    enabled: true
+
+  - id: RISK_SCORE_CRITICAL
+    name: 综合风险评分危急
+    severity: critical
+    metric: risk_score
+    condition: gt
+    threshold: 80
+    cooldown_sec: 30
+    escalate_to_fault: true
+    description: >
+      系统综合风险评分超过80分（高风险），系统处于严重异常状态。
+      建议立即介入处理。
     enabled: true

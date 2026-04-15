@@ -12,6 +12,9 @@ def add_case(
     root_cause=None,
     repair_steps=None,
     description=None,
+    log_feature=None,
+    reference_feature=None,
+    anomaly_flags=None,
 ):
     case = CaseInfo.create(
         case_id=case_id,
@@ -24,9 +27,12 @@ def add_case(
         root_cause=root_cause,
         repair_steps=repair_steps,
         description=description,
+        log_feature=log_feature,
+        reference_feature=reference_feature,
+        anomaly_flags=anomaly_flags,
     )
 
-    return case['id']
+    return case["id"]
 
 
 def update_case(case_id, updates):

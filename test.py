@@ -1,5 +1,6 @@
 from flask import json
-from agent.tools.fetch_data_tool import log_1s_tool
+from agent.tools.fetch_data_tool import log_1s_tool, log_5s_tool
+from agent.tools.telemetry_feature_tool import build_llm_features, log_1s_statistic, log_5s_statistic
 from monitor.coredump_extractor.analyzer import extract_ldd_paths
 from monitor.coredump_extractor.main import run_core_extractor
 from server.app import create_app
@@ -44,19 +45,30 @@ def test_client_live_monitor():
         print(response.get_json())
 
 
-def test_core_parese():
-    core_path = (
-        "/home/test/core.dpdk_crash.456196.456196.11.1775139629.!home!test!dpdk_crash"
-    )
-    exe_path = "/home/test/dpdk_crash"
-    log_path = "/home/test/dpdk_17751396297981.log"
-    output_dir = "/home/test"
-    core_extractor_result = run_core_extractor(
-        [core_path, exe_path, log_path], output_dir
-    )
+def test_log_parse():
+    app = create_app()
+
+    with app.app_context():
+        client_id = "123"
+        pid = "130253"
+
+        metrics_1s = log_1s_tool({"client_id": client_id, "pid": pid, "seconds": 20})
+        metrics_5s = log_5s_tool({"client_id": client_id, "pid": pid, "seconds": 20})
+
+        stat_1s = log_1s_statistic(metrics_1s)
+        stat_5s = log_5s_statistic(metrics_5s)
+        llm_prompt  = build_llm_features(stat_1s, stat_5s, metrics_1s)
+        print("1s日志解析:\n")
+        print(stat_1s)
+        print("5s日志解析:\n")
+        print(stat_5s)
+        print("LLM输入:\n")
+        print(llm_prompt)
+        print("stop")
 
 
 if __name__ == "__main__":
-    test_client_core_analyse()
+    # test_client_core_analyse()
     # test_client_live_monitor()
-    # test_core_parese()
+    # test_log_parse()
+    pass

@@ -11,6 +11,12 @@ from agent.config.llm_factory import get_llm
 from agent.config.settings import get_settings
 from agent.prompts.prompt_builder import PromptBuilder
 from agent.prompts.prompt_registry import get_registry
+from agent.tools.telemetry_feature_tool import (
+    build_llm_features,
+    build_reference_features,
+    log_1s_statistic,
+    log_5s_statistic,
+)
 from agent.tools.tool_registry import get_tools
 
 logger = logging.getLogger(__name__)
@@ -19,163 +25,404 @@ _llm = get_llm()
 _builder = PromptBuilder(registry=get_registry())
 _tools = get_tools()
 _alert_rules = load_alert_rules()
+
+# key: "client_id:rule_id"   → 规则级冷却（细粒度）
+# key: "client_id:severity"  → severity级冷却（粗粒度兜底）
 _cooldown_registry: dict[str, float] = {}
 
-_last_cumulative_snapshot: dict[str, dict[str, float]] = {}
+# reference_feature 模块级缓存，key: "client_id:pid"
+_reference_cache: dict[str, dict] = {}
+_REFERENCE_CACHE_TTL = 300.0  # 5分钟更新一次基线
 
 
 def _latest(metrics) -> dict:
+    """取指标列表的最后一条快照，兼容 list 和 dict 输入。"""
     if isinstance(metrics, list):
         return metrics[-1] if metrics else {}
     return metrics or {}
 
 
-def node_fetch_metrics(state, config):
-    run_id = str(uuid.uuid4())
-    cid, pid = state["client_id"], state["pid"]
-
-    try:
-        client_info = _tools["client_info"].invoke({"client_id": cid})
-        dpdk_info   = _tools["dpdk_info"].invoke({"client_id": cid, "pid": pid})
-        metrics_1s  = _tools["log_1s"].invoke({"client_id": cid, "pid": pid, "seconds": 10})
-        metrics_5s  = _tools["log_5s"].invoke({"client_id": cid, "pid": pid, "seconds": 10})
-    except Exception as exc:
-        logger.exception("fetch_metrics failed | run_id=%s", run_id)
-        return {"error": f"指标拉取失败: {exc}", "run_id": run_id}
-
-    if not metrics_1s or not metrics_5s:
-        logger.warning("fetch_metrics empty | run_id=%s", run_id)
-        return {"error": f"客户端 {cid} DPDK {pid} 实例暂无日志数据", "run_id": run_id}
-
-    last_snapshot = _last_cumulative_snapshot.get(cid, {})
-    baseline = _extract_baseline(dpdk_info, metrics_1s, last_snapshot)
-    _last_cumulative_snapshot[cid] = _take_cumulative_snapshot(metrics_1s)
-
+def _reset_state() -> dict:
+    """
+    返回每轮执行开始时所有输出字段的初始值。
+    在 node_fetch_metrics 中调用，防止 LangGraph State 跨轮残留。
+    """
     return {
-        "run_id": run_id,
-        "client_info": client_info,
-        "dpdk_info": dpdk_info,
-        "metrics_1s": metrics_1s,
-        "metrics_5s": metrics_5s,
-        "baseline": baseline,
-        "alert_rules": _alert_rules,
-        "error": "",
+        "rule_flags": [],
+        "semantic_flags": [],
         "anomaly_flags": [],
         "should_alert": False,
         "escalate_to_fault": False,
+        "alert_input": {},
+        "alert": {},
+        "prompt_meta": {},
+        "crash_stack": "",
+        "core_analysis": "",
+        "mode": "",
+        "error": "",
     }
 
 
-def _take_cumulative_snapshot(metrics_1s):
+def node_fetch_metrics(state, config):
     """
-    取列表最后一条快照，提取累计型指标当前值供下次计算增量。
+    数据拉取节点：拉取原始日志，提取 log_feature 和 reference_feature。
+
+    流程：
+        1. 重置所有输出字段，防止上轮 State 残留影响本轮路由
+        2. 拉取最近 10s 的 1s/5s 日志，生成 log_feature
+        3. 检查 reference_feature 缓存，过期才重新拉取（TTL=5min）
+        4. 出错时返回 error 字段，由 edge_after_fetch 路由至 handle_error
     """
-    ethdev = _latest(metrics_1s).get("ethdev_stats", {})
-    return {
-        "rx_errors":        sum(nic.get("rx_errors", 0)        for nic in ethdev.values()),
-        "rx_nombuf":        sum(nic.get("rx_nombuf", 0)        for nic in ethdev.values()),
-        "rx_missed_errors": sum(nic.get("rx_missed_errors", 0) for nic in ethdev.values()),
-    }
+    run_id = str(uuid.uuid4())
+    cid, pid = state["client_id"], state["pid"]
 
+    # P0：每轮强制重置所有输出字段
+    base = _reset_state()
 
-def _extract_baseline(dpdk_info, metrics_1s, last_snapshot):
-    ethdev = _latest(metrics_1s).get("ethdev_stats", {}) or {}
-
-    def _delta(key):
-        current = sum(
-            nic.get(key, 0)
-            for nic in ethdev.values()
-            if isinstance(nic, dict)
+    try:
+        client_info = _tools["client_info"].invoke({"client_id": cid})
+        dpdk_info = _tools["dpdk_info"].invoke({"client_id": cid, "pid": pid})
+        metrics_1s = _tools["log_1s"].invoke(
+            {"client_id": cid, "pid": pid, "seconds": 10}
         )
-        return current - last_snapshot.get(key, current)
+        metrics_5s = _tools["log_5s"].invoke(
+            {"client_id": cid, "pid": pid, "seconds": 10}
+        )
+
+        if not metrics_1s or not metrics_5s:
+            logger.warning("fetch_metrics empty | run_id=%s", run_id)
+            return {
+                **base,
+                "error": f"客户端 {cid} DPDK {pid} 实例暂无日志数据",
+                "run_id": run_id,
+            }
+
+        statistic_1s = log_1s_statistic(metrics_1s)
+        statistic_5s = log_5s_statistic(metrics_5s)
+        log_feature = build_llm_features(statistic_1s, statistic_5s, metrics_1s)
+
+        # P1：reference_feature 缓存，避免每轮重算
+        reference_feature = _get_reference_feature(cid, pid)
+
+    except Exception as exc:
+        logger.exception("fetch_metrics failed | run_id=%s", run_id)
+        return {**base, "error": f"指标拉取失败: {exc}", "run_id": run_id}
 
     return {
-        "hugepage_free_mb":   dpdk_info.get("baseline_hugepage_free_mb", 2048),
-        "port_drop_rate_pct": dpdk_info.get("baseline_drop_rate_pct", 0.0),
-        "lcore_busy_pct":     dpdk_info.get("baseline_lcore_busy_pct", 60.0),
-        "rx_queue_fill_pct":  dpdk_info.get("baseline_rx_fill_pct", 50.0),
-        "rx_errors":          _delta("rx_errors"),
-        "rx_nombuf":          _delta("rx_nombuf"),
-        "rx_missed_errors":   _delta("rx_missed_errors"),
+        **base,
+        "run_id": run_id,
+        "client_info": client_info,
+        "dpdk_info": dpdk_info,
+        "log_feature": log_feature,
+        "reference_feature": reference_feature,
+        "alert_rules": _alert_rules,
+        # P2：默认允许语义检测，调度层可通过 state 覆盖
+        "allow_semantic": state.get("allow_semantic", True),
     }
 
 
-def _resolve_metric(source, metric):
+def node_rule_detection(state, config):
     """
-    按 metric 路径解析指标值。
-    source 为列表时，遍历所有快照取最大值（捕捉窗口内任意峰值）。
+    规则检测节点（第一阶段）：执行确定性规则引擎。
+
+    基于 log_feature + reference_feature 遍历所有启用规则。
+    规则级冷却在引擎内部过滤，冷却期内的规则不计入结果。
+    结果写入独立字段 rule_flags，不直接写 anomaly_flags。
     """
-    if isinstance(source, list):
-        values = [_resolve_metric(s, metric) for s in source if isinstance(s, dict)]
-        values = [v for v in values if v is not None]
-        return float(max(values)) if values else None
-
-    if metric.startswith("ethdev_stats."):
-        field = metric.split(".", 1)[1]
-        values = [
-            nic.get(field)
-            for nic in source.get("ethdev_stats", {}).values()
-            if nic.get(field) is not None
-        ]
-        return float(max(values)) if values else None
-
-    if metric.startswith("lcore_usage."):
-        field = metric.split(".", 1)[1]
-        lcores = source.get("lcore_usage", {}).get("lcores", [])
-        values = [lc.get(field) for lc in lcores if lc.get(field) is not None]
-        return float(max(values)) if values else None
-
-    return _get_nested(source, metric)
-
-
-def node_anomaly_detection(state, config):
     rule_flags = _run_rule_engine(
-        state["metrics_1s"],
-        state["metrics_5s"],
-        state["baseline"],
+        state["log_feature"],
+        state["reference_feature"],
         state["alert_rules"],
+        state["client_info"].get("client_id", "unknown"),
     )
-    semantic_flags, escalate, prompt_meta = _run_semantic_detection(state, config)
-    all_flags = _deduplicate(rule_flags + semantic_flags)
-
     logger.info(
-        "anomaly_detection done | run_id=%s rule=%d semantic=%d total=%d",
-        state.get("run_id"), len(rule_flags), len(semantic_flags), len(all_flags),
+        "rule_detection done | run_id=%s flags=%s", state.get("run_id"), rule_flags
+    )
+    return {"rule_flags": rule_flags, "error": ""}
+
+
+def node_semantic_detection(state, config):
+    """
+    语义检测节点（第二阶段）：仅在规则引擎无异常且允许语义检测时执行。
+
+    结果写入独立字段 semantic_flags，不直接写 anomaly_flags。
+    LLM 调用失败时静默降级，不影响整体流程。
+    """
+    # P2：allow_semantic 控制是否触发语义检测
+    if not state.get("allow_semantic", True):
+        logger.info(
+            "semantic detection skipped by allow_semantic=False | run_id=%s",
+            state.get("run_id"),
+        )
+        return {"semantic_flags": [], "escalate_to_fault": False, "prompt_meta": {}}
+
+    semantic_flags, escalate, prompt_meta = _run_semantic_detection(state, config)
+    logger.info(
+        "semantic_detection done | run_id=%s flags=%s escalate=%s",
+        state.get("run_id"),
+        semantic_flags,
+        escalate,
     )
     return {
-        "anomaly_flags": all_flags,
+        "semantic_flags": semantic_flags,
         "escalate_to_fault": escalate,
         "prompt_meta": prompt_meta,
         "error": "",
     }
 
 
-def _run_rule_engine(metrics_1s, metrics_5s, baseline, rules):
+def node_risk_assessment(state, config):
+    """
+    风险评估节点：合并 rule_flags + semantic_flags，计算告警等级。
+
+    流程：
+        1. 合并去重两路检测结果为 anomaly_flags
+        2. 无异常直接返回 should_alert=False
+        3. 计算最高 severity（critical > warning > info）
+        4. 判断是否需要故障升级
+        5. severity 级全局冷却兜底（规则级冷却已在引擎层处理）
+        6. 通过后构造 alert_input 传递给 alert_generation
+    """
+    # P3：合并两路独立输出
+    all_flags = _deduplicate(
+        state.get("rule_flags", []) + state.get("semantic_flags", [])
+    )
+
+    if not all_flags:
+        return {"anomaly_flags": [], "should_alert": False}
+
+    severity = _compute_severity(all_flags, state["alert_rules"])
+    escalate = state.get("escalate_to_fault", False) or _has_escalation_flag(
+        all_flags, state["alert_rules"]
+    )
+    client_id = state["client_info"].get("client_id", "unknown")
+
+    # severity 级粗粒度冷却兜底
+    if _in_severity_cooldown(client_id, severity):
+        logger.info(
+            "alert suppressed by severity cooldown | client=%s severity=%s",
+            client_id,
+            severity,
+        )
+        return {
+            "anomaly_flags": all_flags,
+            "should_alert": False,
+            "escalate_to_fault": escalate,
+        }
+
+    _update_severity_cooldown(client_id, severity)
+    return {
+        "anomaly_flags": all_flags,
+        "should_alert": True,
+        "escalate_to_fault": escalate,
+        "alert_input": {
+            "log_feature": state["log_feature"],
+            "severity": severity,
+        },
+    }
+
+
+def node_alert_generation(state, config):
+    """
+    告警生成节点：调用 LLM 生成人类可读的告警标题和描述。
+
+    LLM 调用失败时降级为结构化模板文本（包含关键指标数值），
+    保证告警不丢失且 fallback 内容本身足够可读。
+    """
+    alert_input = state.get("alert_input", {})
+    log_feature = alert_input.get("log_feature", state.get("log_feature", {}))
+    severity = alert_input.get("severity", "warning")
+    client_id = state["client_info"].get("client_id", "unknown")
+
+    messages, meta = _builder.build_alert_generation(
+        anomaly_summary=", ".join(state.get("anomaly_flags", [])),
+        severity=severity,
+        client_id=client_id,
+        log_feature=log_feature,
+    )
+
+    try:
+        raw = StrOutputParser().invoke(_llm.invoke(messages, config=config))
+        title, description = _parse_alert_text(raw)
+    except Exception as exc:
+        logger.warning("alert LLM failed, using fallback text | %s", exc)
+        title, description = _build_fallback_alert(
+            severity, client_id, log_feature, state.get("anomaly_flags", [])
+        )
+
+    return {
+        "alert": {
+            "alert_id": str(uuid.uuid4()),
+            "severity": severity,
+            "title": title,
+            "description": description,
+            "client_id": client_id,
+            "triggered_at": time.time(),
+        },
+        "prompt_meta": meta.as_log_dict() if meta else {},
+        "error": "",
+    }
+
+
+def node_escalate_to_fault(state, config):
+    """
+    故障升级节点：拉取 core dump 和崩溃分析数据，切换至故障分析模式。
+    拉取失败时降级为空字符串，不阻断流程。
+    """
+    logger.warning(
+        "escalating to fault analysis | client=%s flags=%s run_id=%s",
+        state["client_info"].get("client_id"),
+        state.get("anomaly_flags"),
+        state.get("run_id"),
+    )
+
+    return {
+        "escalate_to_fault": True,
+        "mode": "fault_analysis",
+    }
+
+
+def node_handle_error(state, config):
+    """
+    错误处理节点：记录错误日志并重置告警状态，终止本轮 Graph 执行。
+    """
+    logger.error(
+        "realtime_monitor error | run_id=%s | %s",
+        state.get("run_id"),
+        state.get("error", "未知错误"),
+    )
+    return {"should_alert": False, "escalate_to_fault": False}
+
+
+def cleanup_clients(client_ids):
+    """
+    清理离线客户端的冷却记录和 reference 缓存。
+    在客户端断开连接或主动注销时调用，防止内存泄漏。
+    """
+    client_set = set(client_ids)
+
+    for k in [k for k in _cooldown_registry if k.split(":")[0] in client_set]:
+        _cooldown_registry.pop(k, None)
+
+    for k in [k for k in _reference_cache if k.split(":")[0] in client_set]:
+        _reference_cache.pop(k, None)
+
+    logger.info("client cache cleaned | clients=%s", client_ids)
+
+
+def _get_reference_feature(cid: str, pid: int) -> dict:
+    """
+    获取 reference_feature，优先使用缓存（TTL=5min）。
+
+    同时拉取 1s 和 5s 历史日志，保证与 log_feature 的字段口径一致：
+    - rx_pps / rx_errors / queue_imbalance / mempool_free：来自 1s 日志
+    - heap_free / heap_frag / cpu_avg：来自 5s 日志
+    """
+    cache_key = f"{cid}:{pid}"
+    cached = _reference_cache.get(cache_key)
+
+    if cached and (time.time() - cached["updated_at"]) < _REFERENCE_CACHE_TTL:
+        logger.debug("reference_feature cache hit | client=%s pid=%s", cid, pid)
+        return cached["feature"]
+
+    logger.info("reference_feature cache miss, rebuilding | client=%s pid=%s", cid, pid)
+
+    try:
+        # P1+P6：同时拉取 1s 和 5s 历史日志，口径与 log_feature 对齐
+        ref_metrics_1s = _tools["log_1s"].invoke(
+            {"client_id": cid, "pid": pid, "seconds": 300}
+        )
+        ref_metrics_5s = _tools["log_5s"].invoke(
+            {"client_id": cid, "pid": pid, "seconds": 300}
+        )
+        feature = build_reference_features(ref_metrics_1s, ref_metrics_5s)
+    except Exception as exc:
+        logger.warning("reference_feature rebuild failed, use empty | %s", exc)
+        feature = {}
+
+    _reference_cache[cache_key] = {"feature": feature, "updated_at": time.time()}
+    return feature
+
+
+_FEATURE_PATH_MAP: dict[str, list[str]] = {
+    "rx_pps": ["traffic", "rx_pps"],
+    "tx_pps": ["traffic", "tx_pps"],
+    "rx_errors": ["errors", "rx_errors"],
+    "tx_errors": ["errors", "tx_errors"],
+    "nombuf": ["errors", "nombuf"],
+    "missed": ["errors", "missed"],
+    "queue_imbalance": ["queue", "imbalance_ratio"],
+    "mempool_free": ["mempool", "free_ratio"],
+    "heap_free": ["heap", "free_ratio"],
+    "heap_frag": ["heap", "fragmentation"],
+    "cpu_avg": ["cpu", "avg_usage"],
+    "risk_score": ["risk_score"],
+}
+
+
+def _resolve_feature(log_feature: dict, metric: str) -> float | None:
+    """从 log_feature 中按 _FEATURE_PATH_MAP 路径提取指标值。"""
+    path = _FEATURE_PATH_MAP.get(metric)
+    if not path:
+        return None
+    cur = log_feature
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None
+        cur = cur[key]
+    try:
+        return float(cur)
+    except Exception:
+        return None
+
+
+def _run_rule_engine(
+    log_feature: dict,
+    reference_feature: dict,
+    rules,
+    client_id: str,
+) -> list[str]:
+    """
+    确定性规则引擎。
+
+    P0：规则级冷却在此处过滤，冷却期内的规则直接跳过，
+    使用规则自身配置的 cooldown_sec，粒度为 client_id:rule_id。
+    """
     flags = []
     for rule in rules:
         if not rule.enabled:
             continue
-        source = metrics_1s if rule.source == "1s" else metrics_5s
-        value = _resolve_metric(source, rule.metric)   # ✅ 自动处理列表
+
+        # P0：规则级冷却检查
+        if _in_rule_cooldown(client_id, rule.id, rule.cooldown_sec):
+            logger.debug("rule in cooldown | id=%s client=%s", rule.id, client_id)
+            continue
+
+        value = _resolve_feature(log_feature, rule.metric)
         if value is None:
             continue
-        if _evaluate_condition(
-            value,
-            rule.condition,
-            rule.threshold,
-            _get_nested(baseline, rule.metric.split(".")[-1]),
-        ):
+
+        ref_value = reference_feature.get(rule.metric) if reference_feature else None
+
+        if _evaluate_condition(value, rule.condition, rule.threshold, ref_value):
             flags.append(rule.id)
-            logger.debug("rule triggered | id=%s value=%s", rule.id, value)
+            _update_rule_cooldown(client_id, rule.id)  # P0：触发后立即写入冷却
+            logger.debug(
+                "rule triggered | id=%s value=%s ref=%s", rule.id, value, ref_value
+            )
+
     return flags
 
 
-def _run_semantic_detection(state, config):
+def _run_semantic_detection(state, config) -> tuple[list[str], bool, dict]:
+    """
+    LLM 语义检测，仅在规则无异常时调用。
+    失败时静默降级返回空结果。
+    """
     try:
         messages, meta = _builder.build_anomaly_detection(
-            metrics_1s=state["metrics_1s"],
-            metrics_5s=state["metrics_5s"],
-            baseline=state["baseline"],
+            log_feature=state["log_feature"],
+            reference_feature=state["reference_feature"],
             alert_rules=state["alert_rules"],
         )
         raw = StrOutputParser().invoke(_llm.invoke(messages, config=config))
@@ -186,7 +433,30 @@ def _run_semantic_detection(state, config):
         return [], False, {}
 
 
-def _parse_semantic_output(raw):
+def _evaluate_condition(
+    value: float, condition: str, threshold: float, ref_value=None
+) -> bool:
+    """执行单条规则的条件判断，支持绝对阈值和参考值对比。"""
+    match condition:
+        case "gt":
+            return value > threshold
+        case "lt":
+            return value < threshold
+        case "gte":
+            return value >= threshold
+        case "lte":
+            return value <= threshold
+        case "eq":
+            return value == threshold
+        case "ref_ratio" if ref_value not in (None, 0):
+            return (value / ref_value) > threshold
+        case "ref_delta" if ref_value is not None:
+            return (value - ref_value) > threshold
+    return False
+
+
+def _parse_semantic_output(raw: str) -> tuple[list[str], bool]:
+    """解析 LLM 语义检测输出，提取 ANOMALIES 和 ESCALATE 字段。"""
     flags = []
     if m := re.search(r"ANOMALIES:\s*(.+)", raw, re.IGNORECASE):
         raw_flags = m.group(1).strip()
@@ -196,109 +466,8 @@ def _parse_semantic_output(raw):
     return flags, escalate
 
 
-def _evaluate_condition(value, condition, threshold, baseline):
-    match condition:
-        case "gt":      return value > threshold
-        case "lt":      return value < threshold
-        case "gte":     return value >= threshold
-        case "lte":     return value <= threshold
-        case "eq":      return value == threshold
-        case "delta_pct" if baseline not in (None, 0):
-            pct = (value - baseline) / abs(baseline) * 100
-            return pct > threshold if threshold >= 0 else pct < threshold
-    return False
-
-
-def _get_nested(d, key):
-    cur: Any = d
-    for p in key.split("."):
-        if not isinstance(cur, dict) or p not in cur:
-            return None
-        cur = cur[p]
-    return float(cur) if cur is not None else None
-
-
-def _deduplicate(flags):
-    seen: set[str] = set()
-    return [f for f in flags if not (f in seen or seen.add(f))]
-
-
-def node_risk_assessment(state, config):
-    flags = state.get("anomaly_flags", [])
-    if not flags:
-        return {"should_alert": False}
-
-    severity  = _compute_severity(flags, state["alert_rules"])
-    escalate  = state.get("escalate_to_fault", False) or _has_escalation_flag(flags, state["alert_rules"])
-    client_id = state["client_info"].get("client_id", "unknown")
-
-    if _in_cooldown(client_id, severity):
-        logger.info("alert suppressed by cooldown | client=%s severity=%s", client_id, severity)
-        return {"should_alert": False, "escalate_to_fault": escalate}
-
-    _update_cooldown(client_id, severity)
-
-    latest = _latest(state["metrics_1s"])
-    return {
-        "should_alert": True,
-        "escalate_to_fault": escalate,
-        "metrics_1s": {**latest, "_severity": severity},
-    }
-
-
-def _in_cooldown(client_id, severity):
-    return (time.time() - _cooldown_registry.get(f"{client_id}:{severity}", 0.0)) < settings.alert_cooldown_sec
-
-
-def _update_cooldown(client_id, severity):
-    _cooldown_registry[f"{client_id}:{severity}"] = time.time()
-
-
-def _compute_severity(flags, rules):
-    rule_map   = {r.id: r for r in rules}
-    severities = {rule_map[f].severity for f in flags if f in rule_map}
-    return next((lv for lv in ("critical", "warning", "info") if lv in severities), "info")
-
-
-def _has_escalation_flag(flags, rules):
-    rule_map = {r.id: r for r in rules}
-    return any(rule_map.get(f) and rule_map[f].escalate_to_fault for f in flags)
-
-
-def node_alert_generation(state, config):
-    severity  = state["metrics_1s"].get("_severity", "warning")
-    client_id = state["client_info"].get("client_id", "unknown")
-
-    messages, meta = _builder.build_alert_generation(
-        anomaly_summary=", ".join(state.get("anomaly_flags", [])),
-        severity=severity,
-        client_id=client_id,
-        metrics_snapshot=state["metrics_1s"],
-    )
-
-    try:
-        raw = StrOutputParser().invoke(_llm.invoke(messages, config=config))
-        title, description = _parse_alert_text(raw)
-    except Exception as exc:
-        logger.warning("alert LLM failed, using fallback text | %s", exc)
-        title       = f"[{severity.upper()}] DPDK 异常 — {client_id}"
-        description = f"触发规则: {', '.join(state.get('anomaly_flags', []))}"
-
-    return {
-        "alert": {
-            "alert_id":    str(uuid.uuid4()),
-            "severity":    severity,
-            "title":       title,
-            "description": description,
-            "client_id":   client_id,
-            "triggered_at": time.time(),
-        },
-        "prompt_meta": meta.as_log_dict() if meta else {},
-        "error": "",
-    }
-
-
-def _parse_alert_text(raw):
+def _parse_alert_text(raw: str) -> tuple[str, str]:
+    """解析 LLM 告警生成输出，提取 TITLE 和 DESCRIPTION。"""
     title = description = ""
     if m := re.search(r"TITLE:\s*(.+)", raw, re.IGNORECASE):
         title = m.group(1).strip()
@@ -307,43 +476,80 @@ def _parse_alert_text(raw):
     return title or raw[:80], description or raw
 
 
-def node_escalate_to_fault(state, config):
-    logger.warning(
-        "escalating to fault analysis | client=%s flags=%s run_id=%s",
-        state["client_info"].get("client_id"),
-        state.get("anomaly_flags"),
-        state.get("run_id"),
+def _build_fallback_alert(
+    severity: str, client_id: str, log_feature: dict, flags: list
+) -> tuple[str, str]:
+    """
+    LLM 告警生成失败时的结构化 fallback。
+    基于 log_feature 关键指标生成可读文本，而非仅输出规则ID。
+    """
+    traffic = log_feature.get("traffic", {})
+    errors = log_feature.get("errors", {})
+    mempool = log_feature.get("mempool", {})
+    heap = log_feature.get("heap", {})
+    cpu = log_feature.get("cpu", {})
+
+    title = f"[{severity.upper()}] DPDK 异常 — {client_id}"
+    description = (
+        f"触发规则: {', '.join(flags)}\n"
+        f"流量: RX {traffic.get('rx_pps', 0):.1f} pps / "
+        f"TX {traffic.get('tx_pps', 0):.1f} pps\n"
+        f"错误: RX错误={errors.get('rx_errors', 0)} "
+        f"MBUF不足={errors.get('nombuf', 0)} "
+        f"丢包={errors.get('missed', 0)}\n"
+        f"内存池空闲: {mempool.get('free_ratio', 1.0):.1%} | "
+        f"堆内存空闲: {heap.get('free_ratio', 1.0):.1%}\n"
+        f"CPU均值: {cpu.get('avg_usage', 0.0):.1%}"
     )
-    try:
-        crash_stack   = _tools["crash_core"].invoke({})
-        core_analysis = _tools["crash_core_analysis"].invoke({})
-    except Exception as exc:
-        logger.warning("crash data fetch failed during escalation | %s", exc)
-        crash_stack = core_analysis = ""
-
-    return {
-        "escalate_to_fault": True,
-        "crash_stack":   crash_stack,
-        "core_analysis": core_analysis,
-        "mode": "fault_analysis",
-    }
+    return title, description
 
 
-def node_handle_error(state, config):
-    logger.error(
-        "realtime_monitor error | run_id=%s | %s",
-        state.get("run_id"),
-        state.get("error", "未知错误"),
+def _compute_severity(flags: list, rules) -> str:
+    """从触发规则中提取最高告警等级，优先级 critical > warning > info。"""
+    rule_map = {r.id: r for r in rules}
+    severities = {rule_map[f].severity for f in flags if f in rule_map}
+    return next(
+        (lv for lv in ("critical", "warning", "info") if lv in severities), "info"
     )
-    return {"should_alert": False, "escalate_to_fault": False}
 
 
-def cleanup_clients(client_ids):
-    for client_id in client_ids:
-        _last_cumulative_snapshot.pop(client_id, None)
+def _has_escalation_flag(flags: list, rules) -> bool:
+    """判断触发规则中是否存在需要故障升级的规则。"""
+    rule_map = {r.id: r for r in rules}
+    return any(rule_map.get(f) and rule_map[f].escalate_to_fault for f in flags)
 
-    cooldown_keys = [k for k in _cooldown_registry if k.split(":")[0] in client_ids]
-    for k in cooldown_keys:
-        _cooldown_registry.pop(k, None)
 
-    logger.info("client cache cleaned | clients=%s", client_ids)
+# ── P0：规则级冷却（细粒度）──────────────────
+
+
+def _in_rule_cooldown(client_id: str, rule_id: str, cooldown_sec: int) -> bool:
+    """判断指定规则是否处于冷却期（粒度：client_id:rule_id）。"""
+    key = f"{client_id}:rule:{rule_id}"
+    return (time.time() - _cooldown_registry.get(key, 0.0)) < cooldown_sec
+
+
+def _update_rule_cooldown(client_id: str, rule_id: str):
+    """规则触发后写入冷却时间戳。"""
+    _cooldown_registry[f"{client_id}:rule:{rule_id}"] = time.time()
+
+
+# ── severity 级冷却（粗粒度兜底）────────────
+
+
+def _in_severity_cooldown(client_id: str, severity: str) -> bool:
+    """判断指定 severity 等级是否处于全局冷却期（粒度：client_id:severity）。"""
+    key = f"{client_id}:severity:{severity}"
+    return (
+        time.time() - _cooldown_registry.get(key, 0.0)
+    ) < settings.alert_cooldown_sec
+
+
+def _update_severity_cooldown(client_id: str, severity: str):
+    """更新 severity 级全局冷却时间戳。"""
+    _cooldown_registry[f"{client_id}:severity:{severity}"] = time.time()
+
+
+def _deduplicate(flags: list) -> list:
+    """对告警标志列表去重，保持原始顺序。"""
+    seen: set[str] = set()
+    return [f for f in flags if not (f in seen or seen.add(f))]

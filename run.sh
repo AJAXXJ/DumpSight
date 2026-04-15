@@ -12,6 +12,4 @@ python dumpsight.py monitor "/workspace/test/dpdk_crash -l 0-1 -n 4" --file_pref
 # package
 pyinstaller --onefile dumpsight.py 
 
-pyinstaller --onefile main.py
-
 journalctl -u dumpsight.service -f

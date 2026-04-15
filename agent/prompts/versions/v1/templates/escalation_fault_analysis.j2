@@ -1,0 +1,168 @@
+## `fault_analysis_escalation.j2`
+
+```jinja2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【客户端信息】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+客户端 ID:    {{ client_info.get("client_id", "unknown") }}
+DPDK 版本:    {{ dpdk_info.get("version", "unknown") }}
+运行环境:     {{ dpdk_info.get("environment", "unknown") }}
+启动参数:     {{ dpdk_info.get("eal_args", "unknown") }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【触发预警的异常标志】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% if anomaly_flags %}
+规则引擎触发:
+{% for flag in anomaly_flags %}
+  - {{ flag }}
+{% endfor %}
+{% else %}
+  （无规则触发，由语义检测升级）
+{% endif %}
+
+系统洞察:
+{% if log_feature.insight %}
+{% for item in log_feature.insight %}
+  - {{ item }}
+{% endfor %}
+{% else %}
+  - 暂无
+{% endif %}
+
+风险标签:
+{% if log_feature.risk %}
+{% for tag in log_feature.risk %}
+  - {{ tag }}
+{% endfor %}
+{% else %}
+  - 暂无
+{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【当前系统特征】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+综合风险:
+  风险评分:   {{ log_feature.risk_score }} / 100
+  风险等级:   {{ log_feature.risk_level }}
+  风险明细:
+{% for dim, score in log_feature.risk_breakdown.items() %}
+    - {{ dim }}: {{ score }} 分
+{% endfor %}
+
+流量:
+  RX:         {{ log_feature.traffic.rx_pps | round(2) }} pps
+  TX:         {{ log_feature.traffic.tx_pps | round(2) }} pps
+  流量水平:   {{ log_feature.traffic.traffic_level }}
+  长期趋势:   {{ log_feature.traffic.trend }}
+  短期趋势:   {{ log_feature.traffic.short_trend }}
+  稳定性:     {{ log_feature.traffic.stability }}
+  平均包类型: {{ log_feature.traffic.packet_type }}
+
+错误:
+  RX 错误:    {{ log_feature.errors.rx_errors }}
+  TX 错误:    {{ log_feature.errors.tx_errors }}
+  MBUF 不足:  {{ log_feature.errors.nombuf }}
+  端口丢包:   {{ log_feature.errors.missed }}
+  错误等级:   {{ log_feature.errors.severity }}
+
+MBUF 内存池:
+  空闲率:     {{ (log_feature.mempool.free_ratio * 100) | round(1) }}%
+  状态:       {{ log_feature.mempool.status }}
+  趋势:       {{ log_feature.mempool.trend }}
+
+堆内存:
+  空闲率:     {{ (log_feature.heap.free_ratio * 100) | round(1) }}%
+  碎片率:     {{ (log_feature.heap.fragmentation * 100) | round(1) }}%
+  状态:       {{ log_feature.heap.status }}
+
+CPU:
+  平均利用率: {{ (log_feature.cpu.avg_usage * 100) | round(2) }}%
+  状态:       {{ log_feature.cpu.status }}
+  趋势:       {{ log_feature.cpu.trend }}
+  最热核心:   {{ log_feature.cpu.hot_lcore if log_feature.cpu.hot_lcore is not none else "N/A" }}
+
+队列:
+  均衡状态:   {{ log_feature.queue.status }}
+  倾斜比:     {{ log_feature.queue.imbalance_ratio | round(4) }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【历史基线对比】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% if reference_feature %}
+基线窗口:     {{ reference_feature.window_seconds | round(0) }}s  /  {{ reference_feature.sample_count }} 个样本
+
+指标对比:
+  RX pps:     当前 {{ log_feature.traffic.rx_pps | round(2) }}  /  基线 {{ reference_feature.rx_pps | round(2) }}
+  RX 错误:    当前 {{ log_feature.errors.rx_errors }}  /  基线 {{ reference_feature.rx_errors }}
+  MBUF 不足:  当前 {{ log_feature.errors.nombuf }}  /  基线 {{ reference_feature.nombuf }}
+  端口丢包:   当前 {{ log_feature.errors.missed }}  /  基线 {{ reference_feature.missed }}
+  内存池空闲: 当前 {{ (log_feature.mempool.free_ratio * 100) | round(1) }}%  /  基线 {{ (reference_feature.mempool_free * 100) | round(1) }}%
+  堆内存空闲: 当前 {{ (log_feature.heap.free_ratio * 100) | round(1) }}%  /  基线 {{ (reference_feature.heap_free * 100) | round(1) }}%
+  CPU 均值:   当前 {{ (log_feature.cpu.avg_usage * 100) | round(2) }}%  /  基线 {{ (reference_feature.cpu_avg * 100) | round(2) }}%
+  队列倾斜:   当前 {{ log_feature.queue.imbalance_ratio | round(4) }}  /  基线 {{ reference_feature.queue_imbalance | round(4) }}
+{% else %}
+  暂无历史基线数据，请仅基于当前特征进行分析。
+{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【历史相似案例】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% if similar_cases %}
+{% for case in similar_cases %}
+案例 {{ loop.index }}（相似度: {{ case.score | round(3) }}）:
+  异常标志:   {{ case.anomaly_flags | join(", ") if case.anomaly_flags is iterable and case.anomaly_flags is not string else case.anomaly_flags }}
+  根因:       {{ case.root_cause }}
+  处置方案:
+{% if case.repair_steps is string %}
+  {{ case.repair_steps }}
+{% else %}
+{% for step in case.repair_steps %}
+    {{ loop.index }}. {{ step }}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% else %}
+  暂无相似历史案例，请基于当前指标独立分析。
+{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【分析要求】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+请综合以上信息，完成以下分析：
+
+根因分析要求：
+  1. 识别当前最主要的异常维度（内存 / CPU / 队列 / 流量 / 错误）
+  2. 分析各异常指标之间的因果关系（哪个是根因，哪个是症状）
+  3. 与历史基线对比，说明偏离程度和劣化速度
+  4. 预测如果不介入，最可能演变为哪种故障（OOM / 崩溃 / 丢包 / 性能劣化）
+  5. 给出置信度评估（high / medium / low）
+
+处置建议要求：
+  1. 按紧急程度排序（立即处置 / 30分钟内 / 计划性处置）
+  2. 每条建议需具体可执行，包含操作命令或配置参数
+  3. 优先给出无需重启的在线处置方案
+  4. 说明每条建议的预期效果
+
+请严格按以下 JSON 格式输出，不要输出任何其他内容：
+
+```json
+{
+  "root_cause": "根因描述，说明最主要的异常维度及其成因，100字以内",
+  "call_chain": "异常传播路径，描述从根因到潜在故障的演变链路，如：内存池消耗→MBUF分配失败→报文丢弃→业务中断",
+  "confidence": "high/medium/low",
+  "repair_steps": [
+    "【立即】具体操作步骤1",
+    "【立即】具体操作步骤2",
+    "【30分钟内】具体操作步骤3",
+    "【计划性】具体操作步骤4"
+  ]
+}
+```
+```

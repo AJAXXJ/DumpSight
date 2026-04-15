@@ -1,4 +1,0 @@
-- input: |
-    CPU 在 1 秒内从 20% 飙升到 95%
-  output: |
-    异常：CPU 突增，可能是 packet burst 或死循环

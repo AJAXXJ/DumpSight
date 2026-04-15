@@ -22,209 +22,21 @@ class ReportFormatter:
         生成完整的 Markdown 故障报告。
         各 section 独立渲染，缺失字段优雅降级为占位文本。
         """
+        is_fault = bool(state.get("core_info"))
+
         sections = [
             _md_header(state),
             _md_summary(state),
             _md_environment(state),
-            _md_crash_stack(state),
+            _md_crash_stack(state) if is_fault else _md_escalate_result(state),
             _md_root_cause(state),
             _md_repair_steps(state),
+            _md_log_feature(state),
             _md_similar_cases(state),
             _md_prompt_meta(state),
             _md_footer(state),
         ]
         return "\n\n".join(s for s in sections if s.strip())
-
-
-    def to_json(self, state: DPDKDiagnosisState, *, indent: int = 2) -> str:
-
-        def parse_call_chain_graph(state):
-            crash_function = _get(
-                state, "core_info", "meta", "parsed_gdb_output",
-                "call_chain_graph", "crash_function", default="N/A",
-            )
-            call_graph = _get(
-                state, "core_info", "meta", "parsed_gdb_output",
-                "call_chain_graph", "call_graph", default={},
-            )
-            main_thread = _get(
-                state, "core_info", "meta", "parsed_gdb_output",
-                "call_chain_graph", "main_thread", default={},
-            )
-            main_thread_stack = [
-                frame.get("raw", "N/A")
-                for frame in main_thread.get("callstack", [])
-            ]
-            call_chain = [
-                f"{caller} -> {callee}"
-                for caller, callees in (call_graph.items() if isinstance(call_graph, dict) else [])
-                for callee in callees
-            ]
-            return {
-                "crash_function": crash_function,
-                "main_thread_stack": main_thread_stack,
-                "call_chain": call_chain,
-            }
-
-        parsed = parse_call_chain_graph(state)
-
-        # 环境信息
-        lscpu = _get(state, "core_info", "context", "lscpu", default="N/A")
-
-        ports = lscpu["Socket(s)"]
-
-        logical_cores = int(ports) * int(lscpu["Core(s) per socket"]) * int(lscpu["Thread(s) per core"])
-
-        memory_channels = lscpu["NUMA node(s)"]
-
-
-        hugepage = _get(state, "client_info", "environment", "hugepage", default={})
-        total_hugepage_mb = (
-            hugepage.get("HugePages_Total", 0) * hugepage.get("Hugepagesize_kB", 0) / 1024
-            if isinstance(hugepage, dict) else 0
-        )
-
-        payload = {
-            "run_id": state.get("run_id"),
-            "generated_at": _iso_now(),
-            "client": {
-                "client_id":    _get(state, "client_info", "client_id"),
-                "dpdk_version": _get(state, "client_info", "environment", "version"),
-                "os":           _get(state, "client_info", "os"),
-                "hostname":     _get(state, "client_info", "hostname"),
-            },
-            "environment": {
-                "ports":             ports,
-                "logical_cores":     logical_cores,
-                "memory_channels":   memory_channels,
-                "hugepage_total_mb": round(total_hugepage_mb, 2),
-            },
-            "diagnosis": {
-                "root_cause":   state.get("root_cause", ""),
-                "confidence":   state.get("confidence", "medium"),
-                "call_chain":   parsed["call_chain"],
-                "repair_steps": state.get("repair_steps", []),
-            },
-            "crash": {
-                "crash_function":    parsed["crash_function"],
-                "main_thread_stack": parsed["main_thread_stack"],
-            },
-            "similar_cases": [
-                {
-                    "case_id":     c.get("case_id"),
-                    "root_cause":  c.get("root_cause"),
-                    "score":       round(float(c.get("score", 0.0)), 4),
-                    "repair_steps": c.get("repair_steps"),
-                }
-                for c in state.get("retrieved_cases", [])
-            ],
-            "prompt_meta": state.get("prompt_meta", {}),
-        }
-        return json.dumps(payload, ensure_ascii=False, indent=indent)
-
-
-    def to_plain(self, state: DPDKDiagnosisState, *, width: int = 80) -> str:
-        lines: list[str] = []
-        sep = "=" * width
-
-        def section(title: str, body: str) -> None:
-            lines.append(sep)
-            lines.append(f"  {title.upper()}")
-            lines.append(sep)
-            for para in body.strip().splitlines():
-                lines.append(textwrap.fill(para, width=width) if para.strip() else "")
-            lines.append("")
-
-        # 环境信息
-        lscpu = _get(state, "core_info", "context", "lscpu", default="N/A")
-
-        ports = lscpu["Socket(s)"]
-
-        logical_cores = int(ports) * int(lscpu["Core(s) per socket"]) * int(lscpu["Thread(s) per core"])
-
-        memory_channels = lscpu["NUMA node(s)"]
-        hugepage = _get(state, "client_info", "environment", "hugepage", default={})
-        total_hugepage_mb = (
-            hugepage.get("HugePages_Total", 0) * hugepage.get("Hugepagesize_kB", 0) / 1024
-            if isinstance(hugepage, dict) else 0
-        )
-
-        # crash 解析
-        crash_function = _get(
-            state, "core_info", "meta", "parsed_gdb_output",
-            "call_chain_graph", "crash_function", default="N/A",
-        )
-        call_graph = _get(
-            state, "core_info", "meta", "parsed_gdb_output",
-            "call_chain_graph", "call_graph", default={},
-        )
-        main_thread = _get(
-            state, "core_info", "meta", "parsed_gdb_output",
-            "call_chain_graph", "main_thread", default={},
-        )
-        main_thread_stack = [
-            frame.get("raw", "N/A")
-            for frame in main_thread.get("callstack", [])
-        ]
-        call_chain_list = [
-            f"{caller} -> {callee}"
-            for caller, callees in (call_graph.items() if isinstance(call_graph, dict) else [])
-            for callee in callees
-        ]
-
-        section(
-            "DPDK 故障分析报告",
-            f"Run ID   : {state.get('run_id', 'N/A')}\n"
-            f"生成时间 : {_iso_now()}\n"
-            f"客户端   : {_get(state, 'client_info', 'client_id', default='N/A')}\n"
-            f"DPDK 版本: {_get(state, 'client_info', 'environment', 'version', default='N/A')}",
-        )
-
-        section(
-            "运行环境",
-            f"主机名   : {_get(state, 'client_info', 'hostname', default='N/A')}\n"
-            f"操作系统 : {_get(state, 'client_info', 'os', default='N/A')}\n"
-            f"端口数     : {ports}\n"
-            f"逻辑核心 : {logical_cores}\n"
-            f"内存通道 : {memory_channels}\n"
-            f"大页内存 : {total_hugepage_mb:.2f} MB",
-        )
-
-        section(
-            "根因分析",
-            f"置信度: {_confidence_cn(state.get('confidence', 'medium'))}\n\n"
-            + (state.get("root_cause") or "未确定"),
-        )
-
-        if crash_function != "N/A" or main_thread_stack:
-            stack_text = (
-                f"崩溃函数 : {crash_function}\n"
-                f"主线程堆栈:\n" + "\n".join(f"  {f}" for f in main_thread_stack[:30])
-            )
-            section("崩溃信息", stack_text)
-
-        if call_chain_list:
-            section(
-                "调用链",
-                "\n".join(f"  {i+1}. {f}" for i, f in enumerate(call_chain_list)),
-            )
-
-        if state.get("repair_steps"):
-            section(
-                "修复建议",
-                "\n".join(f"  {i+1}. {s}" for i, s in enumerate(state["repair_steps"])),
-            )
-
-        if state.get("retrieved_cases"):
-            body = "\n".join(
-                f"  [{c.get('case_id','?')}] {c.get('root_cause','')} "
-                f"(相似度 {c.get('score',0):.2f})"
-                for c in state["retrieved_cases"]
-            )
-            section("参考历史案例", body)
-
-        lines.append(sep)
-        return "\n".join(lines)
 
 
 def _md_header(state: DPDKDiagnosisState) -> str:
@@ -274,7 +86,9 @@ def _md_environment(state: DPDKDiagnosisState) -> str:
 
     ports = lscpu["Socket(s)"]
 
-    logical_cores = int(ports) * int(lscpu["Core(s) per socket"]) * int(lscpu["Thread(s) per core"])
+    logical_cores = (
+        int(ports) * int(lscpu["Core(s) per socket"]) * int(lscpu["Thread(s) per core"])
+    )
 
     memory_channels = lscpu["NUMA node(s)"]
 
@@ -330,7 +144,7 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
         main_thread_stack = []
         for frame in main_thread.get("callstack", []):
             main_thread_stack.append(frame.get("raw", "N/A"))
-        
+
         # 提取所有线程的堆栈信息
         threads_stack = {}
         threads = state.get("call_chain_graph", {}).get("threads", {})
@@ -346,26 +160,27 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
             for callee in callees:
                 call_chain.append(f"{caller} -> {callee}")
 
-        
         return {
             "crash_function": crash_function,
             "main_thread_stack": main_thread_stack,
             "threads_stack": threads_stack,
-            "call_chain": call_chain
+            "call_chain": call_chain,
         }
 
     parsed_data = parse_call_chain_graph(state)
 
     crash_function = parsed_data.get("crash_function", "N/A")
     main_thread_stack = "\n".join(parsed_data.get("main_thread_stack", []))
-    
+
     # 添加所有线程堆栈
     threads_report = ""
     for tid, thread_stack in parsed_data.get("threads_stack", {}).items():
-        threads_report += f"\n**线程 {tid} 堆栈**:\n```\n" + "\n".join(thread_stack) + "\n```\n"
-    
+        threads_report += (
+            f"\n**线程 {tid} 堆栈**:\n```\n" + "\n".join(thread_stack) + "\n```\n"
+        )
+
     call_chain = "\n".join(parsed_data.get("call_chain", []))
-    
+
     return f"""
     ## 崩溃信息报告
     
@@ -385,6 +200,111 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
     """
 
 
+def _md_escalate_result(state: DPDKDiagnosisState) -> str:
+    """
+    渲染预警升级的异常检测结果（非 crash 场景）。
+    从 state["escalate_result"] 中提取 monitor Graph 输出信息生成 Markdown。
+
+    escalate_result 实际结构（来自 monitor Graph result）：
+    {
+        "alert": {
+            "severity":    "critical/warning/info",
+            "title":       "告警标题",
+            "description": "告警描述",
+            "triggered_at": float,
+        },
+        "anomaly_flags":  ["RULE_ID_1", "RULE_ID_2", ...],  # 规则ID字符串列表
+        "rule_flags":     ["RULE_ID_1", ...],
+        "semantic_flags": ["SEMANTIC_FLAG_1", ...],
+        "log_feature": {
+            "risk_score":   int,
+            "risk_level":   "low/medium/high/critical",
+            "risk_breakdown": {...},
+            "insight":      [...],
+            "risk":         [...],
+        },
+    }
+    """
+    result = state.get("escalate_result") or {}
+    alert = result.get("alert") or {}
+    log_feature = result.get("log_feature") or {}
+
+    severity = alert.get("severity", "unknown")
+    title = alert.get("title", "")
+    description = alert.get("description", "")
+    triggered_at = alert.get("triggered_at")
+
+    anomaly_flags = result.get("anomaly_flags") or []
+    rule_flags = result.get("rule_flags") or []
+    semantic_flags = result.get("semantic_flags") or []
+
+    risk_score = log_feature.get("risk_score", 0)
+    risk_level = log_feature.get("risk_level", "unknown")
+    risk_breakdown = log_feature.get("risk_breakdown") or {}
+    insight = log_feature.get("insight") or []
+    risk_tags = log_feature.get("risk") or []
+
+    # 时间格式化
+    triggered_str = ""
+    if triggered_at:
+        import datetime
+
+        triggered_str = datetime.datetime.fromtimestamp(triggered_at).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+    md = ["## ⚠️ 预警升级信息"]
+
+    # 告警标题与等级
+    if title:
+        md.append(f"\n**{title}**")
+    md.append(f"- **告警等级**: `{severity.upper()}`")
+    if triggered_str:
+        md.append(f"- **触发时间**: {triggered_str}")
+
+    # 综合风险
+    md.append(f"\n### 风险评估")
+    md.append(f"- **风险评分**: {risk_score} / 100")
+    md.append(f"- **风险等级**: `{risk_level}`")
+
+    if risk_breakdown:
+        md.append("- **风险明细**:")
+        for dim, score in risk_breakdown.items():
+            md.append(f"  - {dim}: {score} 分")
+
+    # 异常标志
+    md.append(f"\n### 异常标志")
+    if rule_flags:
+        md.append("- **规则触发**:")
+        for flag in rule_flags:
+            md.append(f"  - `{flag}`")
+    if semantic_flags:
+        md.append("- **语义检测**:")
+        for flag in semantic_flags:
+            md.append(f"  - `{flag}`")
+    if not anomaly_flags:
+        md.append("- 无异常标志")
+
+    # 系统洞察
+    if insight:
+        md.append(f"\n### 系统洞察")
+        for item in insight:
+            md.append(f"- {item}")
+
+    # 风险标签
+    if risk_tags:
+        md.append(f"\n### 风险标签")
+        for tag in risk_tags:
+            md.append(f"- `{tag}`")
+
+    # 告警描述
+    if description:
+        md.append(f"\n### 告警详情")
+        md.append(description)
+
+    return "\n".join(md)
+
+
 def _md_root_cause(state: DPDKDiagnosisState) -> str:
     cause = state.get("root_cause", "").strip()
     if not cause:
@@ -400,6 +320,98 @@ def _md_repair_steps(state: DPDKDiagnosisState) -> str:
         return "## 修复建议\n\n_暂无可操作建议。_"
     items = "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))
     return f"## 修复建议\n\n{items}"
+
+
+def _md_log_feature(state: DPDKDiagnosisState) -> str:
+    log_feature = state.get("log_feature")
+
+    if not log_feature:
+        return "## 日志解析\n\n_暂无日志解析。_"
+
+    md = ["## 日志解析\n"]
+
+    # 系统状态
+    sys = log_feature.get("system_status", {})
+    md.append("### 🖥 系统状态")
+    md.append(f"- 存活状态: {'正常' if sys.get('is_alive') else '异常'}")
+
+    # 时间窗口
+    window = log_feature.get("window", {})
+    md.append("\n### ⏱ 时间窗口")
+    md.append(f"- 1s窗口: {window.get('1s'):.2f}s")
+    md.append(f"- 5s窗口: {window.get('5s'):.2f}s")
+
+    # 流量
+    traffic = log_feature.get("traffic", {})
+    md.append("\n### 🚦 流量分析")
+    md.append(f"- RX PPS: {traffic.get('rx_pps'):.2f}")
+    md.append(f"- TX PPS: {traffic.get('tx_pps'):.2f}")
+    md.append(f"- 流量等级: {traffic.get('traffic_level')}")
+    md.append(f"- 趋势: {traffic.get('trend')}")
+    md.append(f"- 短期趋势: {traffic.get('short_trend')}")
+    md.append(f"- 稳定性: {traffic.get('stability')}")
+    md.append(f"- 包类型: {traffic.get('packet_type')}")
+
+    # 队列
+    queue = log_feature.get("queue", {})
+    md.append("\n### 📦 队列状态")
+    md.append(f"- 不均衡比例: {queue.get('imbalance_ratio'):.4f}")
+    md.append(f"- 状态: {queue.get('status')}")
+
+    # 内存池
+    mem = log_feature.get("mempool", {})
+    md.append("\n### 🧠 Mempool")
+    md.append(f"- 空闲率: {mem.get('free_ratio'):.4f}")
+    md.append(f"- 状态: {mem.get('status')}")
+    md.append(f"- 趋势: {mem.get('trend')}")
+
+    # Heap
+    heap = log_feature.get("heap", {})
+    md.append("\n### 🪵 Heap 内存")
+    md.append(f"- 空闲率: {heap.get('free_ratio'):.4f}")
+    md.append(f"- 碎片率: {heap.get('fragmentation'):.4f}")
+    md.append(f"- 状态: {heap.get('status')}")
+
+    # CPU
+    cpu = log_feature.get("cpu", {})
+    md.append("\n### 🧮 CPU")
+    md.append(f"- 平均使用率: {cpu.get('avg_usage'):.2f}")
+    md.append(f"- 状态: {cpu.get('status')}")
+    md.append(f"- 趋势: {cpu.get('trend')}")
+    md.append(f"- 热核: {cpu.get('hot_lcore')}")
+
+    # 错误
+    err = log_feature.get("errors", {})
+    md.append("\n### ⚠️ 错误统计")
+    md.append(f"- RX错误: {err.get('rx_errors')}")
+    md.append(f"- TX错误: {err.get('tx_errors')}")
+    md.append(f"- NoMBUF: {err.get('nombuf')}")
+    md.append(f"- Missed: {err.get('missed')}")
+    md.append(f"- 严重程度: {err.get('severity')}")
+
+    # 风险
+    md.append("\n### 🚨 风险评估")
+    md.append(f"- 风险等级: {log_feature.get('risk_level')}")
+    md.append(f"- 风险分数: {log_feature.get('risk_score')}")
+    md.append(f"- 风险项: {', '.join(log_feature.get('risk', []))}")
+
+    risk_breakdown = log_feature.get("risk_breakdown", {})
+    if risk_breakdown:
+        md.append("- 风险拆解:")
+        for k, v in risk_breakdown.items():
+            md.append(f"  - {k}: {v}")
+
+    # 洞察
+    insights = log_feature.get("insight", [])
+    md.append("\n### 💡 系统洞察")
+
+    if insights:
+        for i in insights:
+            md.append(f"- {i}")
+    else:
+        md.append("- 无异常洞察")
+
+    return "\n".join(md)
 
 
 def _md_similar_cases(state: DPDKDiagnosisState) -> str:

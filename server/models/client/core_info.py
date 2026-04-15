@@ -13,9 +13,7 @@ class CoreInfo(BaseModel):
 
     client_info_id = Column(Integer, nullable=True)
 
-    crash_md_report = Column(Text, nullable=True)
-
-    crash_json_report = Column(JSON, nullable=True)
+    report = Column(Text, nullable=True)
 
     process_time = Column(Integer, nullable=True)
 

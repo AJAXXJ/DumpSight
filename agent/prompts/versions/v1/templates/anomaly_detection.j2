@@ -1,72 +1,108 @@
-{# ============================================================
-   anomaly_detection.j2
-   输入变量:
-     - metrics_1s  : dict   1s 周期指标快照
-     - metrics_5s  : dict   5s 周期聚合指标
-     - baseline    : dict   正常基线值
-     - alert_rules : list   已配置的预警规则
-     - few_shots   : list   示例对 [{input, output}]
-   ============================================================ #}
+你的任务是根据当前系统特征和历史基线，判断系统是否存在异常，并输出结构化结论。
 
-{% if few_shots %}
-# 参考示例
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【当前系统特征】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{% for shot in few_shots %}
-## 示例 {{ loop.index }}
+系统状态:
+  存活:       {{ log_feature.system_status.is_alive }}
+  观测窗口:   1s={{ log_feature.window["1s"] | round(1) }}s  5s={{ log_feature.window["5s"] | round(1) }}s
 
-输入指标:
-{{ shot.input }}
+流量:
+  RX:         {{ log_feature.traffic.rx_pps | round(2) }} pps  /  {{ (log_feature.traffic.rx_pps * 8 / 1e6) | round(3) }} Mbps
+  TX:         {{ log_feature.traffic.tx_pps | round(2) }} pps
+  流量水平:   {{ log_feature.traffic.traffic_level }}
+  长期趋势:   {{ log_feature.traffic.trend }}
+  短期趋势:   {{ log_feature.traffic.short_trend }}
+  稳定性:     {{ log_feature.traffic.stability }}
+  平均包大小: {{ log_feature.traffic.packet_type }}
 
-分析输出:
-{{ shot.output }}
+队列:
+  均衡状态:   {{ log_feature.queue.status }}
+  倾斜比:     {{ log_feature.queue.imbalance_ratio | round(4) }}
 
----
-{% endfor %}
+MBUF 内存池:
+  空闲率:     {{ (log_feature.mempool.free_ratio * 100) | round(1) }}%
+  状态:       {{ log_feature.mempool.status }}
+  趋势:       {{ log_feature.mempool.trend }}
+
+堆内存:
+  空闲率:     {{ (log_feature.heap.free_ratio * 100) | round(1) }}%
+  碎片率:     {{ (log_feature.heap.fragmentation * 100) | round(1) }}%
+  状态:       {{ log_feature.heap.status }}
+
+CPU:
+  平均利用率: {{ (log_feature.cpu.avg_usage * 100) | round(2) }}%
+  状态:       {{ log_feature.cpu.status }}
+  趋势:       {{ log_feature.cpu.trend }}
+  最热核心:   {{ log_feature.cpu.hot_lcore if log_feature.cpu.hot_lcore is not none else "N/A" }}
+
+错误:
+  RX错误:     {{ log_feature.errors.rx_errors }}
+  TX错误:     {{ log_feature.errors.tx_errors }}
+  MBUF不足:   {{ log_feature.errors.nombuf }}
+  端口丢包:   {{ log_feature.errors.missed }}
+  错误等级:   {{ log_feature.errors.severity }}
+
+综合风险:
+  风险评分:   {{ log_feature.risk_score }} / 100
+  风险等级:   {{ log_feature.risk_level }}
+  风险明细:   {{ log_feature.risk_breakdown }}
+  当前洞察:   {{ log_feature.insight | join(" | ") }}
+  风险标签:   {{ log_feature.risk | join(", ") if log_feature.risk else "无" }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【历史基线（参考）】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{% if reference_feature %}
+  基线窗口:   {{ reference_feature.window_seconds | round(0) }}s  /  {{ reference_feature.sample_count }} 个样本
+  RX pps:     {{ reference_feature.rx_pps | round(2) }}
+  TX pps:     {{ reference_feature.tx_pps | round(2) }}
+  RX错误:     {{ reference_feature.rx_errors }}
+  MBUF不足:   {{ reference_feature.nombuf }}
+  端口丢包:   {{ reference_feature.missed }}
+  队列倾斜:   {{ reference_feature.queue_imbalance | round(4) }}
+  内存池空闲: {{ (reference_feature.mempool_free * 100) | round(1) }}%
+  堆内存空闲: {{ (reference_feature.heap_free * 100) | round(1) }}%
+  CPU均值:    {{ (reference_feature.cpu_avg * 100) | round(2) }}%
+  CPU峰值:    {{ (reference_feature.cpu_max * 100) | round(2) }}%
+{% else %}
+  暂无历史基线数据，请仅基于当前特征判断。
 {% endif %}
 
-# 当前指标数据
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【预警规则参考】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## 1s 实时快照
+以下规则已由规则引擎执行但未触发（供语义判断参考）：
 
-大页内存剩余  : {{ metrics_1s.dpdk.hugepage_free_mb | default('N/A') }} MB
-端口丢包率    : {{ metrics_1s.dpdk.port_drop_rate_pct | default('N/A') }} %
-RX 队列填充率 : {{ metrics_1s.dpdk.rx_queue_fill_pct | default('N/A') }} %
-TX 队列停滞数 : {{ metrics_1s.dpdk.tx_queue_stall_count | default('N/A') }}
-逻辑核心忙碌率: {{ metrics_1s.dpdk.lcore_busy_pct | default('N/A') }} %
-mbuf 分配失败 : {{ metrics_1s.dpdk.mbuf_alloc_fail_count | default('N/A') }}
-RX 错误计数   : {{ metrics_1s.dpdk.rx_error_count | default('N/A') }}
-
-## 5s 聚合趋势
-
-大页内存剩余  : {{ metrics_5s.dpdk.hugepage_free_mb | default('N/A') }} MB
-端口丢包率    : {{ metrics_5s.dpdk.port_drop_rate_pct | default('N/A') }} %
-RX 错误计数   : {{ metrics_5s.dpdk.rx_error_count | default('N/A') }}
-
-## 正常基线（对比参考）
-
-大页内存基线  : {{ baseline.hugepage_free_mb | default('N/A') }} MB
-丢包率基线    : {{ baseline.port_drop_rate_pct | default('N/A') }} %
-核心忙碌率基线: {{ baseline.lcore_busy_pct | default('N/A') }} %
-RX 队列基线   : {{ baseline.rx_queue_fill_pct | default('N/A') }} %
-
-## 已配置告警规则（供参考）
 {% for rule in alert_rules %}
-- {{ rule.id }}: {{ rule.name }}（阈值 {{ rule.condition }} {{ rule.threshold }}，严重度 {{ rule.severity }}）
+{% if rule.enabled %}
+  [{{ rule.severity | upper }}] {{ rule.id }}: {{ rule.name }}
+    条件: {{ rule.metric }} {{ rule.condition }} {{ rule.threshold }}
+    说明: {{ rule.description | truncate(80) }}
+{% endif %}
 {% endfor %}
 
-# 任务
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【判断要求】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-请完成以下分析，严格按照输出格式回答：
+请综合以上信息，重点关注以下场景：
+1. 多个中低风险指标同时劣化（联动异常），单项未达阈值但整体已危险
+2. 与历史基线相比的异常偏离（趋势劣化）
+3. 规则引擎未覆盖的模式，如内存缓慢泄漏、CPU利用率持续爬升
 
-**第一步：逐项核查**
-对比当前指标与基线，判断每个维度是否存在异常。重点关注组合型信号：
-- mbuf 分配失败 + 大页内存快速下降 → 崩溃前驱
-- TX 停滞 + 丢包率上升 → 发送链路阻塞
-- 核心忙碌率 > 95% + RX 队列接近满 → 处理能力瓶颈
+判断标准：
+- 仅凭当前单点数据无法确认的异常，不应误报
+- 低流量（traffic_level=low）且无错误时，波动属正常，不应报警
+- 基线缺失时，仅基于绝对值判断，不做趋势对比
 
-**第二步：输出结论**
-严格按以下格式输出，不添加其他内容：
+请严格按以下格式输出，不要输出任何其他内容：
 
-ANOMALIES: <触发的规则 ID 列表，逗号分隔，无异常则写 NONE>
-ESCALATE: <yes 或 no，yes 表示需要立即触发完整故障分析>
-REASON: <一句话说明判断依据，不超过 60 字>
+ANOMALIES: <逗号分隔的异常标志，无异常时输出 NONE>
+ESCALATE: <yes 或 no>
+
+异常标志命名规范：使用大写下划线格式，如 CPU_OVERLOAD、MEMPOOL_LEAK、TRAFFIC_SURGE
+ESCALATE=yes 的条件：存在 critical 级别异常且有崩溃/OOM 风险

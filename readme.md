@@ -23,122 +23,134 @@ DumpSight 是一个用于监控和分析 DPDK 应用程序崩溃的工具。它�
 - **核心转储分析**：提供核心转储文件分析接口
 - **LLM 集成**：支持使用大语言模型进行智能分析，包括故障分析和实时监控
 - **数据存储**：集成 MySQL（SQLAlchemy ORM）和 Redis 进行数据持久化
-- **加密解密**：提供客户端密钥加密验证功能
 - **RESTful API**：基于 Flask 提供 RESTful API 接口
 - **Agent 智能分析**：基于 LangChain 的图结构（Graph）实现复杂的分析流程
 - **案例库管理**：支持历史案例的存储和检索
 - **智能报告生成**：自动生成结构化的故障分析报告
+- **告警规则配置**：支持自定义告警规则，实时触发告警通知
+- **仪表板数据展示**：提供 Web 仪表板，展示客户端状态、核心转储分析结果等
 
 ## 项目结构
 
 ```
-DPDK/
+DumpSight/
 ├── config.py                # 客户端配置管理
-├── config.yaml              # 客户端配置文件
-├── dumpsight.py             # 客户端主程序入口
-├── run.sh                   # 运行脚本
-├── monitor/                 # 监控模块
-│   ├── constant.py          # 信号常量映射
-│   ├── live_monitor.py      # 实时监控 DPDK 应用状态
-│   ├── monitor_manager.py   # 监控管理器（RedisMonitorManager）
-│   ├── request.py           # 客户端注册和心跳请求
-│   ├── coredump_extractor/  # 核心转储提取器
-│   │   ├── analyzer.py      # GDB 核心转储分析器
-│   │   ├── constant.py      # 常量定义
-│   │   ├── main.py          # 主入口
-│   │   ├── utils.py         # 工具函数
-│   │   └── extractor/       # 解析器模块
-│   │       ├── context_parser.py  # GDB 上下文解析
-│   │       └── meta_parser.py     # GDB 元数据解析
-│   └── dpdk_tools/          # DPDK 工具集
-│       ├── cpu_layout.py            # CPU 布局分析
-│       ├── dpdk_devbind.py         # DPDK 设备绑定工具
-│       ├── dpdk_devbind_helper.py  # 设备绑定辅助工具
-│       ├── dpdk_hugepages.py       # HugePage 状态查询
-│       └── dpdk_telemetry.py       # DPDK 遥测数据采集
-├── tools/                   # 工具模块
-│   ├── daemon.py            # 守护进程和 systemd 服务管理
-│   ├── encrypt_decrypt.py   # 加密解密工具
-│   ├── events.py            # 事件监控和清理任务
-│   ├── logger.py            # 日志配置
-│   ├── redis_util.py        # Redis 工具
-│   └── utils.py             # 工具函数
-├── server/                  # 服务器模块
-│   ├── main.py              # 服务器主程序（Flask 应用）
-│   ├── config.yaml          # 服务器配置文件
-│   ├── agent/               # Agent 模块
-│   │   ├── main.py          # Agent 主程序
-│   │   ├── case_library/    # 案例库
-│   │   │   ├── retriever.py      # 案例检索器
-│   │   │   ├── schema.py         # 案例数据模型
-│   │   │   ├── ingestion/        # 案例处理
-│   │   │   │   ├── chunker.py    # 文本分块
-│   │   │   │   ├── embedder.py   # 向量嵌入
-│   │   │   │   └── parse.py      # 案例解析
-│   │   │   ├── metadata_db/      # 元数据数据库
-│   │   │   │   ├── crud.py       # CRUD 操作
-│   │   │   │   ├── models.py     # 数据模型
-│   │   │   │   └── migrations/   # 数据库迁移
-│   │   │   └── vector_store/     # 向量存储
-│   │   │       ├── chroma_client.py  # Chroma 客户端
-│   │   │       └── qdrant_client.py  # Qdrant 客户端
-│   │   ├── config/            # Agent 配置
-│   │   │   ├── llm_factory.py    # LLM 工厂
-│   │   │   └── settings.py      # 设置管理
-│   │   ├── graphs/            # 分析图
-│   │   │   ├── state.py         # 状态定义
-│   │   │   ├── fault_analysis/   # 故障分析图
-│   │   │   │   ├── edges.py     # 边定义
-│   │   │   │   ├── graph.py     # 图构建
-│   │   │   │   └── nodes.py     # 节点定义
-│   │   │   └── live_monitor/    # 实时监控图
-│   │   │       ├── edges.py     # 边定义
-│   │   │       ├── graph.py     # 图构建
-│   │   │       └── nodes.py     # 节点定义
-│   │   ├── output/             # 输出处理
-│   │   │   ├── alter_dispatcher.py  # 报告分发
-│   │   │   ├── case_feedback_writer.py  # 案例反馈写入
-│   │   │   └── report_formatter.py    # 报告格式化
-│   │   ├── prompts/            # 提示词管理
-│   │   │   ├── prompt_builder.py     # 提示词构建器
-│   │   │   ├── prompt_registry.py    # 提示词注册表
-│   │   │   └── versions/             # 版本管理
-│   │   │       ├── v1/
-│   │   │       │   ├── few_shots/    # 少样本示例
-│   │   │       │   │   └── crash_examples.yaml
-│   │   │       │   ├── system/       # 系统提示词
-│   │   │       │   │   └── fault_analyst.md
-│   │   │       │   └── templates/    # 模板
-│   │   │       │       └── fault_analysis.j2
-│   │   │       └── ...
-│   │   ├── tools/              # 工具集
-│   │   │   └── tool_registry.py      # 工具注册表
-│   │   └── ...
-│   ├── controller/          # 控制器层
-│   │   └── client_controller.py  # 客户端相关 API
-│   ├── repository/          # 数据访问层
-│   │   └── client_repository.py   # 客户端数据访问实现
-│   ├── service/             # 业务逻辑层
-│   │   ├── client_service.py      # 客户端服务（部分实现）
-│   │   └── dashborad_service.py   # 仪表板服务（待实现）
-│   ├── models/              # 数据模型层
-│   │   ├── base_model.py          # 基础模型类
+├── dumpsight.py            # 客户端主程序入口
+├── main.py                 # 服务器启动入口
+├── run.sh                  # 运行脚本
+├── server-config.yaml      # 服务器配置文件
+├── test.py                 # 测试脚本
+├── monitor/                # 监控模块
+│   ├── daemon.py          # 守护进程管理
+│   ├── events.py          # 事件监控和清理任务
+│   ├── live_monitor.py    # 实时监控 DPDK 应用状态
+│   ├── monitor_manager.py # 监控管理器（RedisMonitorManager）
+│   ├── request.py         # 客户端注册和心跳请求
+│   ├── coredump_extractor/ # 核心转储提取器
+│   │   ├── main.py        # 主入口
+│   │   ├── analyzer.py    # GDB 核心转储分析器
+│   │   ├── utils.py       # 工具函数
+│   │   ├── tools/         # 分析工具
+│   │   │   ├── mismatch_pattern.py
+│   │   │   └── parse_call_chain.py
+│   │   └── extractor/     # 解析器模块
+│   │       ├── context_parser.py
+│   │       └── meta_parser.py
+│   └── dpdk_tools/        # DPDK 工具集
+│       ├── cpu_layout.py
+│       ├── dpdk_devbind.py
+│       ├── dpdk_devbind_helper.py
+│       ├── dpdk_hugepages.py
+│       └── dpdk_telemetry.py
+├── server/                 # 服务器模块
+│   ├── app.py             # Flask 应用工厂
+│   ├── controller/        # 控制器层
+│   │   ├── client_controller.py
+│   │   └── dashborad_controller.py
+│   ├── service/           # 业务逻辑层
+│   │   ├── client_service.py
+│   │   ├── dashborad_service.py
+│   │   └── alert_service.py
+│   ├── repository/        # 数据访问层
+│   │   ├── client_repository.py
+│   │   ├── client_redis.py
+│   │   ├── core_repositiry.py
+│   │   └── case_repository.py
+│   ├── models/            # 数据模型层
+│   │   ├── base_model.py
 │   │   └── client/
-│   │       ├── client_info.py     # 客户端信息模型
-│   │       └── core_info.py       # 核心转储分析结果模型
-│   ├── repository/          # 数据访问层
-│   │   ├── client_repository.py   # 客户端 MySQL 数据访问
-│   │   └── client_redis.py        # 客户端 Redis 数据访问
-│   ├── agent/               # Agent 模块
-│   │   ├── agent_client.py        # LLM Agent 客户端
-│   │   ├── tools.py               # LangChain 工具集
-│   │   └── skill/                 # Agent 技能模块（待实现）
-│   └── tools/               # 服务器工具
-│       ├── encrypt_decrypt.py     # 加密解密工具
-│       ├── mysql_util.py           # MySQL 工具（SQLAlchemy ORM）
-│       └── redis_util.py           # Redis 工具
-├── .gitignore               # Git 忽略文件配置
-└── readme.md                # 项目文档
+│   │       ├── client_info.py
+│   │       ├── core_info.py
+│   │       └── case_info.py
+│   └── __init__.py
+├── agent/                  # Agent 智能分析模块
+│   ├── main.py            # Agent 主程序
+│   ├── live_monitor.py    # Agent 实时监控主程序
+│   ├── config/            # Agent 配置
+│   │   ├── agent-config.yaml
+│   │   ├── llm_factory.py
+│   │   ├── settings.py
+│   │   ├── alert_rules.py
+│   │   └── alert_rules.yaml
+│   ├── graphs/            # 分析图
+│   │   ├── state.py
+│   │   ├── fault_analysis/ # 故障分析图
+│   │   │   ├── graph.py
+│   │   │   ├── nodes.py
+│   │   │   └── edges.py
+│   │   └── live_monitor/  # 实时监控图
+│   │       ├── graph.py
+│   │       ├── nodes.py
+│   │       └── edges.py
+│   ├── case_library/      # 案例库
+│   │   ├── fetcher.py
+│   │   ├── rag.py
+│   │   ├── tools.py
+│   │   └── knowledge/
+│   │       ├── faiss_store.py
+│   │       ├── data/
+│   │       │   ├── library.json
+│   │       │   └── faiss_index/
+│   │       │       ├── index.faiss
+│   │       │       └── index.pkl
+│   │       └── template/
+│   │           ├── case_template.j2
+│   │           └── query_template.j2
+│   ├── output/            # 输出处理
+│   │   ├── llm_output_formatter.py
+│   │   └── report_formatter.py
+│   ├── tools/             # Agent 工具集
+│   │   ├── fetch_data_tool.py
+│   │   ├── telemetry_feature_tool.py
+│   │   └── tool_registry.py
+│   └── prompts/           # 提示词管理
+│       ├── prompt_builder.py
+│       ├── prompt_registry.py
+│       └── versions/
+│           └── v1/
+│               ├── few_shots/
+│               │   ├── crash_examples.yaml
+│               │   └── repair_examples.yaml
+│               ├── system/
+│               │   ├── case_builder.md
+│               │   ├── core_fault_analyst.md
+│               │   ├── escalation_fault_analyst.md
+│               │   └── realtime_monitor.md
+│               └── templates/
+│                   ├── alert_generation.j2
+│                   ├── anomaly_detection.j2
+│                   ├── case_ingestion.j2
+│                   ├── core_fault_analysis.j2
+│                   ├── escalation_fault_analysis.j2
+│                   └── repair_suggestion.j2
+├── tools/                 # 通用工具模块
+│   ├── common_utils.py
+│   ├── constant.py
+│   ├── encrypt_decrypt.py
+│   ├── logger.py
+│   ├── mysql_util.py
+│   └── redis_util.py
+└── readme.md              # 项目文档
 ```
 
 ## 安装要求
@@ -161,13 +173,13 @@ DPDK/
 ### 客户端依赖
 
 ```bash
-pip install click requests schedule inotify-simple pyinstaller
+pip install click requests schedule inotify-simple pyinstaller redis pyyaml
 ```
 
 ### 服务器依赖
 
 ```bash
-pip install flask pyyaml langchain-openai redis pymysql sqlalchemy
+pip install flask pyyaml langchain langchain-openai langgraph faiss-cpu openai redis pymysql sqlalchemy
 ```
 
 ## 快速开始
@@ -227,7 +239,7 @@ sudo python dumpsight.py daemon
 
 #### 1. 配置服务器
 
-编辑 `server/config.yaml` 文件，配置以下参数：
+编辑 `server-config.yaml` 文件，配置以下参数：
 
 ```yaml
 # 服务器配置
@@ -257,7 +269,6 @@ REDIS_DB: 0
 #### 2. 启动服务器
 
 ```bash
-cd server
 python main.py
 ```
 
@@ -346,7 +357,7 @@ DumpSight 采用客户端-服务器（C/S）架构，基于 Flask Web 框架和 
 
 ### 服务器配置
 
-服务器配置文件位于 `server/config.yaml`，主要配置项包括：
+服务器配置文件位于 `server-config.yaml`，主要配置项包括：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -457,29 +468,39 @@ bash run.sh
 当前项目处于开发阶段，核心功能已基本实现，部分功能仍在完善中：
 
 ### 已完成功能
-- 客户端监控功能已实现，包括 DPDK 应用监控、核心转储捕获、心跳机制等
-- 核心转储提取器已实现，支持 GDB 分析、上下文解析、元数据解析
-- 服务器基础框架已搭建，包括 Flask Web 框架、MySQL 工具、Redis 工具等
-- 数据模型层已实现，包括 BaseModel 基类、ClientInfo 客户端信息模型、CoreInfo 核心转储分析结果模型
-- MySQL 数据访问层（client_repository.py）已实现，支持客户端信息的增删改查和分页查询
-- Redis 数据访问层（client_redis.py）已实现，支持 DPDK 信息、核心转储、日志查询
-- LangChain 工具集（tools.py）已实现，包含客户端信息、DPDK 信息、核心转储、日志查询工具
-- 服务层（client_service.py）部分实现，密钥验证逻辑已实现，核心转储分析服务已集成 Redis 数据访问
-- Agent 模块基础框架已实现，包括：
+- **客户端监控功能**：DPDK 应用监控、核心转储捕获、心跳机制、日志管理、守护进程、定期清理
+- **核心转储提取器**：支持 GDB 分析、上下文解析、元数据解析、调用链解析
+- **核心转储提取器工具**：支持不匹配模式检测和调用链解析（mismatch_pattern.py, parse_call_chain.py）
+- **DPDK 工具集**：CPU 布局分析、HugePage 状态查询、设备绑定状态检查、遥测数据采集
+- **系统服务集成**：systemd 服务管理，支持开机自启动
+- **服务器基础框架**：Flask Web 框架、MySQL 工具（SQLAlchemy ORM）、Redis 工具
+- **数据模型层**：BaseModel 基类、ClientInfo 客户端信息模型、CoreInfo 核心转储分析结果模型、CaseInfo 案例模型
+- **数据访问层**：
+  - MySQL 数据访问（client_repository.py）支持客户端信息的增删改查和分页查询
+  - Redis 数据访问（client_redis.py）支持 DPDK 信息、核心转储、日志查询
+  - 案例库数据访问（case_repository.py）支持案例存储和检索
+- **服务层**：
+  - 客户端注册、心跳、状态查询、核心转储分析服务已实现（client_service.py）
+  - 密钥验证逻辑已实现
+- **Agent 智能分析模块**：
   - 故障分析图（fault_analysis/）：基于 LangChain Graph 实现崩溃分析流程
   - 实时监控图（live_monitor/）：基于 LangChain Graph 实现实时监控分析
-  - 案例库（case_library/）：支持历史案例的存储和检索
+  - **Agent实时监控主程序**：独立的实时监控 Agent 入口（live_monitor.py）
+  - 案例库（case_library/）：支持历史案例的存储和检索（FAISS 向量存储）
   - 提示词管理（prompts/）：管理 LLM 分析的提示词模板
   - 输出处理（output/）：处理分析结果的格式化和分发
+  - 工具集（tools/）：提供客户端信息、DPDK 信息、核心转储、日志查询工具
+  - **Agent配置管理**：支持 agent-config.yaml 配置文件和告警规则配置
+- **API 接口**：客户端注册、心跳、状态查询、核心转储分析、故障分析、实时监控等接口框架已实现
 
 ### 待完善功能
-- API 接口业务逻辑仍需完善（注册、心跳、状态查询）
-- LLM 智能分析功能基础框架已实现，具体分析逻辑待完善
-- 控制器层（client_controller.py）API 框架已实现，但与 service 层的集成待完善
-- 仪表板服务（dashborad_service.py）待实现
-- Agent 技能模块（server/agent/skill/）待实现
-- Web 管理界面待实现
-- 告警通知机制待实现
+- **仪表板服务**：仪表板数据展示和 Web 界面待实现
+- **告警通知机制**：告警规则配置和通知渠道待实现
+- **LLM 智能分析深度优化**：分析逻辑和准确性有待进一步提升
+- **Agent 技能模块**：扩展更多分析技能和自动化修复能力
+- **Web 管理界面**：完整的 Web 管理界面待开发
+- **性能优化**：大规模客户端并发监控的性能优化
+- **文档完善**：API 文档和用户使用指南待补充
 
 ## 许可证
 
