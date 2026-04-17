@@ -73,10 +73,13 @@ def client_core_analyse_service(crash_info):
 
     add_core_info(
         client_id,
+        pid,
+        timestamp,
         report,
         core_info.get("process_time"),
         analyse_time,
         total_time,
+        result
     )
 
 

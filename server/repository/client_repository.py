@@ -18,8 +18,7 @@ def update_client_heartbeat(client_id):
 
 
 def get_client_info(client_id):
-    client_info = ClientInfo.get(client_id=client_id)
-    return client_info if client_info else None
+    return ClientInfo.get(client_id=client_id)
 
 
 def page_client_info(page_num, page_size):

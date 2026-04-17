@@ -50,7 +50,10 @@ def _md_summary(state: DPDKDiagnosisState) -> str:
     badge = _confidence_badge(conf)
     client = _get(state, "client_info", "client_id", default="N/A")
     ver = _get(state, "client_info", "environment", "version", default="N/A")
-
+    crash_timestamp = _get(state, "core_info", "core_timestamp")
+    crash_time = datetime.fromtimestamp(crash_timestamp).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     return (
         "## 摘要\n\n"
         f"| 字段 | 值 |\n"
@@ -58,6 +61,7 @@ def _md_summary(state: DPDKDiagnosisState) -> str:
         f"| 客户端 | `{client}` |\n"
         f"| DPDK 版本 | `{ver}` |\n"
         f"| 诊断置信度 | {badge} |\n"
+        f"| 崩溃时间 | {crash_time} |\n"
         f"| 匹配历史案例 | {len(state.get('retrieved_cases', []))} 条 |\n\n"
     )
 
