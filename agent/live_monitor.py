@@ -120,10 +120,6 @@ def stop_client_monitor(monitor_handle: dict):
                 logger.warning("thread did not stop in time | thread=%s", t.name)
 
 
-# ─────────────────────────────────────────────
-# 多客户端管理
-# ─────────────────────────────────────────────
-
 # 全局监控句柄注册表，key: "client_id:pid"
 _monitor_registry: dict[str, dict] = {}
 

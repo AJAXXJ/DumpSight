@@ -1,4 +1,4 @@
-from agent.case_library.tools import render_embedding_input_template
+from agent.case_library.render import render_embedding_input_template
 from agent.graphs.state import DPDKDiagnosisState
 from pathlib import Path
 
@@ -36,7 +36,7 @@ def build_retrieval_context(state: DPDKDiagnosisState) -> dict:
 
     # TODO 加上 LLM 总结
     query = render_embedding_input_template(
-        Path(__file__).parent / "knowledge" / "template" / "case_template.j2",
+        Path(__file__).parent / "store" / "template" / "case_template.j2",
         description,
     )
 

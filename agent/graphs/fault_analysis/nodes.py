@@ -2,7 +2,7 @@ import logging
 import uuid
 from langchain_core.output_parsers import StrOutputParser
 
-from agent.case_library.rag import get_rag
+from agent.case_library.retrieve import get_retrieval
 from agent.config.llm_factory import get_llm
 from agent.config.settings import get_settings
 from agent.output.llm_output_formatter import (
@@ -168,7 +168,7 @@ def node_retrieve_cases(state, config):
     try:
         description = _get_retrieve_description(state, config)
         state["description"] = description
-        cases = get_rag().search(state=state)
+        cases = get_retrieval().search(state=state)
     except Exception as exc:
         logger.warning("case retrieval failed, continuing without cases | %s", exc)
         cases = []
@@ -358,7 +358,7 @@ def node_generate_report(state, config):
                 }
             )
 
-        get_rag().add_case(case_doc)
+        get_retrieval().add_case(case_doc)
 
     return {"report": report, "error": ""}
 

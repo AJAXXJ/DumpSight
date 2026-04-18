@@ -3,6 +3,7 @@ import sys
 import click
 from tools.constant import SIGNAL_MAP
 from tools.logger import logger
+from datetime import datetime
 
 def check_root():
     """
@@ -40,3 +41,20 @@ def parse_core_filename(filename):
         "exe_path": exe_path,
         "exe_exists": os.path.exists(exe_path)
     }
+
+
+def format_datetime(dt, fmt="%Y-%m-%d %H:%M:%S"):
+    if dt is None:
+        return None
+
+    # 如果已经是字符串，尝试解析
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt)  # 兼容 ISO 格式
+        except ValueError:
+            try:
+                dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                return dt  # 实在解析不了就原样返回
+
+    return dt.strftime(fmt)

@@ -1,7 +1,7 @@
 # server
 DEBUG: true
 PORT: 5000
-
+SECRET_KEY: DPDK
 # mysql
 MYSQL_HOST: 192.168.122.1
 MYSQL_PORT: 3306

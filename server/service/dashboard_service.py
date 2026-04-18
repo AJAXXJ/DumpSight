@@ -1,19 +1,21 @@
 import datetime
-
+from server.service.client_service import is_client_alive
+from tools.common_utils import format_datetime
 from agent.output.report_formatter import _get
 from agent.tools.call_chain_tool import build_graph_spec_tool, build_timeline_spec_tool
 from agent.tools.telemetry_feature_tool import log_1s_statistic, log_5s_statistic
 from server.repository.client_redis import (
+    get_client_running_instances,
     get_dpdk_core_info,
     get_dpdk_info,
     get_dpdk_log,
 )
-from server.repository.client_repository import get_client_info
-from server.repository.core_repositiry import get_core_info
+from server.repository.client_repository import get_all_client_info, get_client_info
+from server.repository.core_repository import get_core_info
 from server.tools.metrics_timeseries_collector import process_and_get_timeseries
 
 
-def dashborad_raw_json_service(request_json):
+def dashboard_raw_json_service(request_json):
     """
     前端获取原始 json 数据
     """
@@ -30,7 +32,7 @@ def dashborad_raw_json_service(request_json):
     return _get(state, *names, default="暂无此参数")
 
 
-def dashborad_render_report_service(client_id, pid, timestamp):
+def dashboard_render_report_service(client_id, pid, timestamp):
     """
     前端渲染崩溃报告 调用链数据 异常时序数据
     """
@@ -57,21 +59,58 @@ def dashborad_render_report_service(client_id, pid, timestamp):
     }
 
 
-def dashborad_client_info_service(client_id):
+def dashboard_client_list_service():
+    """
+    前端获取所有客户端信息
+    """
+    client_list = get_all_client_info()
+    client_front_list = []
+
+    for client in client_list:
+
+        client_id = client["client_id"]
+
+        environment = client["environment"]
+
+        os = environment["os"]
+        dpdk_version = environment["version"]
+        hostname = environment["hostname"]
+
+        running_instances_pid_nums = len(get_client_running_instances(client_id))
+
+        create_time = format_datetime(client["create_time"])
+        
+        client_front_list.append(
+            {
+                "id":  client["id"],
+                "client_id": client_id,
+                "os": os,
+                "hostname": hostname,
+                "dpdk_version": dpdk_version,
+                "running_instances_pid_nums": running_instances_pid_nums,
+                "created_time": create_time,
+                "alive": is_client_alive(client)
+            }
+        )
+
+    return client_front_list
+
+
+def dashboard_client_info_service(client_id):
     """
     前端获取指定客户端信息
     """
     return get_client_info(client_id)
 
 
-def dashborad_instance_info_service(client_id, pid):
+def dashboard_instance_info_service(client_id, pid):
     """
     前端获取指定DPDK实例信息
     """
     return get_dpdk_info(client_id, pid)
 
 
-def dashborad_instance_card_info_service(client_id, pid, seconds):
+def dashboard_instance_card_info_service(client_id, pid, seconds):
     """
     前端获取指定秒数窗口期日志聚合信息
     """

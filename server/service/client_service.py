@@ -1,6 +1,6 @@
 import datetime
 from agent.graphs.fault_analysis.graph import get_fault_analysis_graph
-from agent.main import run_fault_anlyse
+from agent.main import run_fault_analyse
 from server.repository.client_redis import (
     get_dpdk_core_info,
 )
@@ -10,7 +10,7 @@ from server.repository.client_repository import (
     get_client_info,
     update_client_heartbeat,
 )
-from server.repository.core_repositiry import add_core_info
+from server.repository.core_repository import add_core_info
 
 
 def client_status_service(client_id):
@@ -63,7 +63,7 @@ def client_core_analyse_service(crash_info):
     core_info = get_dpdk_core_info(client_id, pid, timestamp)
 
     graph = get_fault_analysis_graph()
-    analyse_time, result = run_fault_anlyse(
+    analyse_time, result = run_fault_analyse(
         graph, {"client_id": client_id, "pid": pid, "timestamp": timestamp}
     )
 

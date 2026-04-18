@@ -1,0 +1,10 @@
+{
+    "cSpell.words": [
+        "dpdk",
+        "ethdev",
+        "ierrors",
+        "ipackets",
+        "lcore",
+        "nombuf"
+    ]
+}

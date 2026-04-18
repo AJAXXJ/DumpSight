@@ -3,7 +3,7 @@ import threading
 from agent.case_library.fetcher import build_retrieval_context
 from agent.config.llm_factory import get_embedding
 from agent.config.settings import get_settings
-from agent.case_library.knowledge.faiss_store import FaissStore
+from agent.case_library.store.faiss_store import FaissStore
 from server.repository.case_repository import add_case, get_case, get_case_batch
 from tools.logger import logger
 
@@ -11,7 +11,7 @@ from tools.logger import logger
 BASE_DIR = Path(__file__).parent
 
 
-class RAG:
+class Retrieval:
 
     def __init__(self):
         self.config = get_settings()
@@ -20,9 +20,9 @@ class RAG:
 
         self.faiss_store = FaissStore(
             embeddings=embeddings,
-            index_path=BASE_DIR / "knowledge" / "data" / "faiss_index",
-            json_path=BASE_DIR / "knowledge" / "data" / "library.json",
-            template_path=BASE_DIR / "knowledge" / "template" / "case_template.j2",
+            index_path=BASE_DIR / "store" / "data" / "faiss_index",
+            json_path=BASE_DIR / "store" / "data" / "library.json",
+            template_path=BASE_DIR / "store" / "template" / "case_template.j2",
         )
 
     def search(self, state):
@@ -103,9 +103,9 @@ _rag = None
 _rag_lock = threading.Lock()
 
 
-def get_rag():
+def get_retrieval():
     global _rag
     with _rag_lock:
         if _rag is None:
-            _rag = RAG()
+            _rag = Retrieval()
     return _rag

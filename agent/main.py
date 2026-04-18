@@ -104,7 +104,7 @@ def run_slow_poll(
         return {"error": str(e), "should_alert": False, "escalate_to_fault": False}
 
 
-def run_fault_anlyse(graph, initial_state):
+def run_fault_analyse(graph, initial_state):
     """
     启动故障分析图，执行每个节点的逻辑并管理状态的转换。
 
