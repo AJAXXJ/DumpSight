@@ -179,6 +179,9 @@ class RedisUtil:
 _instances: dict[str, RedisUtil] = {}
 _lock = threading.Lock()
 
+_default_redis_util: Optional[RedisUtil] = None
+_default_lock = threading.Lock()
+
 def get_redis_util(redis_config: Optional[RedisConfig] = None) -> RedisUtil:
     key = f"{redis_config.host}:{redis_config.port}:{redis_config.db}"
     
@@ -188,3 +191,27 @@ def get_redis_util(redis_config: Optional[RedisConfig] = None) -> RedisUtil:
                 _instances[key] = RedisUtil(redis_config)
     
     return _instances[key]
+
+
+def get_redis_util_no_config() -> RedisUtil:
+    """
+    获取默认 Redis 实例，需要先调用 init_redis_util
+    """
+    if _default_redis_util is None:
+        raise RuntimeError("Redis util not initialized, call init_redis_util first")
+    return _default_redis_util
+
+
+def init_redis_util(config) -> RedisUtil:
+    """
+    初始化默认 Redis 实例，模仿 MySQL 的 init 形式
+    传入 app config，内部构建 RedisConfig
+    """
+    global _default_redis_util
+    with _default_lock:
+        if _default_redis_util is None:
+            redis_config = RedisConfig.from_app_config(config)
+            if redis_config is None:
+                raise ValueError("Redis config is invalid or missing REDIS_HOST")
+            _default_redis_util = RedisUtil(redis_config)
+    return _default_redis_util

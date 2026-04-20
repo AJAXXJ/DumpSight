@@ -3,14 +3,27 @@ from flask import Blueprint, request
 from server.service.dashboard_service import (
     dashboard_client_info_service,
     dashboard_client_list_service,
-    dashboard_instance_card_info_service,
+    dashboard_instance_timeseries_info_service,
     dashboard_instance_info_service,
+    dashboard_instance_list_service,
     dashboard_raw_json_service,
-    dashboard_render_report_service
+    dashboard_render_report_service,
+    dashboard_report_list_service,
+    dashboard_statics_service
 )
 from server.tools.api_response import ApiResponse
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
+@dashboard_bp.route("/report_list", methods=["GET"])
+def dashboard_report_list():
+    try:
+        page_index = request.args.get("page_index")
+        page_size = request.args.get("page_size")
+        report_list = dashboard_report_list_service(page_index, page_size)
+        return ApiResponse.success(report_list)
+    except Exception as e:
+        return ApiResponse.error(str(e))
 
 
 @dashboard_bp.route("/raw_json", methods=["POST"])
@@ -46,7 +59,18 @@ def dashboard_client_list():
 
     except Exception as e:
         return ApiResponse.error(str(e))
+    
 
+@dashboard_bp.route("/instance_list", methods=["GET"])
+def dashboard_instance_list():
+    try:
+        client_id = request.args.get("client_id")
+
+        instance_list = dashboard_instance_list_service(client_id)
+        return ApiResponse.success(instance_list)
+
+    except Exception as e:
+        return ApiResponse.error(str(e))
 
 @dashboard_bp.route("/client_info", methods=["GET"])
 def dashboard_client_info():
@@ -74,19 +98,28 @@ def dashboard_instance_info():
         return ApiResponse.error(str(e))
 
 
-@dashboard_bp.route("/instance_card_info", methods=["GET"])
-def dashboard_instance_card_info():
+@dashboard_bp.route("/instance_timeseries_info", methods=["GET"])
+def dashboard_instance_timeseries_info():
     try:
         client_id = request.args.get("client_id")
         pid = request.args.get("pid")
-        seconds = request.args.get("seconds")
+        seconds = int(request.args.get("seconds"))
 
-        instance_card_info = dashboard_instance_card_info_service(
+        instance_timeseries_info = dashboard_instance_timeseries_info_service(
             client_id, pid, seconds
         )
 
-        return ApiResponse.success(instance_card_info)
+        return ApiResponse.success(instance_timeseries_info)
 
     except Exception as e:
         return ApiResponse.error(str(e))
 
+
+@dashboard_bp.route("/dashboard_statics", methods=["GET"])
+def dashboard_statics():
+    try:
+        statics_info = dashboard_statics_service()
+        return ApiResponse.success(statics_info)
+
+    except Exception as e:
+        return ApiResponse.error(str(e))

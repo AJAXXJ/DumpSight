@@ -82,10 +82,10 @@ def monitor_core(config):
                 }
 
                 # set core preprocess info in redis
-                get_monitor_manager().set_preprocess_core_info(pid, preprocess_info)
+                key = get_monitor_manager().set_preprocess_core_info(pid, preprocess_info)
 
                 # report crash to server
-                report_crash(config, pid, timestamp)
+                report_crash(config, pid, key)
 
     finally:
         inotify.rm_watch(wd)

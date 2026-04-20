@@ -70,20 +70,20 @@ def client_heartbeat(config):
         logger.error(f"Error during heartbeat: {e}")
 
 
-def report_crash(config, pid, timestamp):
+def report_crash(config, pid, key):
     """
     Report a client crash event to the server for core analysis.
     """
     try:
         core_analyse_url = config.server_url + "/api/client/report_crash"
 
-        payload = {"client_id": config.client_id, "pid": pid, "timestamp": timestamp}
+        payload = {"client_id": config.client_id, "pid": pid, "key": key}
 
         response = requests.post(core_analyse_url, json=payload, timeout=5)
 
         if response.status_code == 200:
             logger.info(
-                f"Crash reported: client={config.client_id}, pid={pid}, timestamp={timestamp}"
+                f"Crash reported: client={config.client_id}, pid={pid}, key={key}"
             )
         else:
             logger.error(

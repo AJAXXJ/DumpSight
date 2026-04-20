@@ -47,14 +47,21 @@ def format_datetime(dt, fmt="%Y-%m-%d %H:%M:%S"):
     if dt is None:
         return None
 
-    # 如果已经是字符串，尝试解析
+    if isinstance(dt, (int, float)):
+        dt = datetime.fromtimestamp(dt)
+
+    # 字符串
     if isinstance(dt, str):
         try:
-            dt = datetime.fromisoformat(dt)  # 兼容 ISO 格式
+            dt = datetime.fromisoformat(dt)
         except ValueError:
             try:
                 dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
             except ValueError:
-                return dt  # 实在解析不了就原样返回
+                return dt
 
-    return dt.strftime(fmt)
+    # 最终统一格式化
+    if hasattr(dt, "strftime"):
+        return dt.strftime(fmt)
+
+    return dt

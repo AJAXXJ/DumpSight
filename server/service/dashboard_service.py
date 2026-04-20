@@ -1,4 +1,5 @@
 import datetime
+from server.repository.case_repository import get_all_case
 from server.service.client_service import is_client_alive
 from tools.common_utils import format_datetime
 from agent.output.report_formatter import _get
@@ -11,8 +12,54 @@ from server.repository.client_redis import (
     get_dpdk_log,
 )
 from server.repository.client_repository import get_all_client_info, get_client_info
-from server.repository.core_repository import get_core_info
+from server.repository.core_repository import (
+    get_core_info,
+    get_core_list,
+    get_core_page,
+)
 from server.tools.metrics_timeseries_collector import process_and_get_timeseries
+
+
+def dashboard_report_list_service(page_index, page_size):
+    """
+    前端获取所有崩溃报告
+    """
+    core_page = get_core_page(page_index, page_size)
+    core_list = core_page["items"]
+
+    report_list = []
+    for core in core_list:
+
+        redis_core_info = get_dpdk_core_info(
+            core["client_id"], core["pid"], core["timestamp"]
+        )
+
+        crash_timestamp = redis_core_info["core_timestamp"]
+
+        report_list.append(
+            {
+                "id": core["id"],
+                "client_id": core["client_id"],
+                "pid": core["pid"],
+                "timestamp": core["timestamp"],
+                "process_time": core["process_time"],
+                "analyse_time": core["analyse_time"],
+                "total_time": core["total_time"],
+                "crash_time": datetime.datetime.fromtimestamp(crash_timestamp).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+                "create_time": datetime.datetime.fromisoformat(
+                    core["create_time"]
+                ).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+
+    return {
+        "total": core_page["total"],
+        "page": core_page["page"],
+        "page_size": core_page["page_size"],
+        "items": report_list,
+    }
 
 
 def dashboard_raw_json_service(request_json):
@@ -47,7 +94,7 @@ def dashboard_render_report_service(client_id, pid, timestamp):
     timeline_spec = build_timeline_spec_tool(call_chain_graph)
 
     return {
-        "crash_time": datetime.fromtimestamp(crash_timestamp).strftime(
+        "crash_time": datetime.datetime.fromtimestamp(crash_timestamp).strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
         "report": core_info["report"],
@@ -79,21 +126,32 @@ def dashboard_client_list_service():
         running_instances_pid_nums = len(get_client_running_instances(client_id))
 
         create_time = format_datetime(client["create_time"])
-        
+
         client_front_list.append(
             {
-                "id":  client["id"],
+                "id": client["id"],
                 "client_id": client_id,
                 "os": os,
                 "hostname": hostname,
                 "dpdk_version": dpdk_version,
                 "running_instances_pid_nums": running_instances_pid_nums,
                 "created_time": create_time,
-                "alive": is_client_alive(client)
+                "alive": is_client_alive(client),
             }
         )
 
     return client_front_list
+
+
+def dashboard_instance_list_service(client_id):
+    """
+    前端获取指定客户端正在运行实例列表
+    """
+    instance_list = get_client_running_instances(client_id)
+    return [
+        {**instance, "start_time": format_datetime(instance.get("start_time"))}
+        for instance in instance_list
+    ]
 
 
 def dashboard_client_info_service(client_id):
@@ -110,7 +168,7 @@ def dashboard_instance_info_service(client_id, pid):
     return get_dpdk_info(client_id, pid)
 
 
-def dashboard_instance_card_info_service(client_id, pid, seconds):
+def dashboard_instance_timeseries_info_service(client_id, pid, seconds):
     """
     前端获取指定秒数窗口期日志聚合信息
     """
@@ -150,4 +208,28 @@ def dashboard_instance_card_info_service(client_id, pid, seconds):
             "lcore_5s": stat5["lcore"],
         },
         "timeseries_data": timeseries_data,
+    }
+
+
+def dashboard_statics_service():
+    """
+    前端统计数据获取
+    """
+    client_list = get_all_client_info()
+    client_nums = len(client_list)
+
+    pid_nums = 0
+    for client in client_list:
+        client_id = client["client_id"]
+        pid_nums += len(get_client_running_instances(client_id))
+
+    core_nums = len(get_core_list())
+
+    case_nums = len(get_all_case())
+
+    return {
+        "client_nums": client_nums,
+        "pid_nums": pid_nums,
+        "core_nums": core_nums,
+        "case_nums": case_nums,
     }

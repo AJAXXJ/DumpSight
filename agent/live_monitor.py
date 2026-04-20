@@ -4,10 +4,9 @@ import time
 
 from agent.graphs.live_monitor.graph import (
     get_realtime_monitor_graph,
-    run_fast_poll,
-    run_slow_poll,
 )
 from agent.graphs.live_monitor.nodes import cleanup_clients
+from agent.main import run_fast_poll, run_slow_poll
 from server.repository.client_redis import get_client_running_instances
 from server.service.client_service import client_get_all_alive_info
 

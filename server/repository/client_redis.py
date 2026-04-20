@@ -1,7 +1,7 @@
 import json
 import time
 from tools.logger import logger
-from tools.redis_util import get_redis_util, RedisConfig
+from tools.redis_util import get_redis_util, RedisConfig, get_redis_util_no_config
 from flask import current_app
 
 def get_dpdk_info(client_id, pid):
@@ -10,7 +10,7 @@ def get_dpdk_info(client_id, pid):
     Key format: {client_id}:info:{pid}
     """
     key = f"{client_id}:info:{pid}"
-    data = get_redis_util(RedisConfig.from_app_config(current_app.config)).get(key)
+    data = get_redis_util_no_config().get(key)
     if not data:
         return None
     try:
@@ -26,7 +26,7 @@ def get_dpdk_core_info(client_id, pid, timestamp):
     Key format: {client_id}:core:{pid}:{timestamp}
     """
     key = f"{client_id}:core:{pid}:{timestamp}"
-    data = get_redis_util(RedisConfig.from_app_config(current_app.config)).get(key)
+    data = get_redis_util_no_config().get(key)
     if not data:
         return None
     try:
@@ -35,6 +35,19 @@ def get_dpdk_core_info(client_id, pid, timestamp):
         logger.error(f"Failed to decode dpdk core info JSON for client {client_id} pid {pid}")
         return None
 
+def get_dpdk_core_info_by_key(key):
+    """
+    Get all core dump info for a specific PID, sorted by timestamp.
+    Key format: {client_id}:core:{pid}:{timestamp}
+    """
+    data = get_redis_util_no_config().get(key)
+    if not data:
+        return None
+    try:
+        return json.loads(data)
+    except json.JSONDecodeError:
+        logger.error(f"Failed to decode dpdk core info JSON for key {key}")
+        return None
 
 def get_dpdk_log(client_id, pid, record_type, seconds=900):
     """
@@ -49,7 +62,7 @@ def get_dpdk_log(client_id, pid, record_type, seconds=900):
         for ts in range(start, now + 1)
     ]
 
-    kv = get_redis_util(RedisConfig.from_app_config(current_app.config)).get_many(keys)
+    kv = get_redis_util_no_config().get_many(keys)
 
     result = []
     for data in kv.values():
@@ -73,7 +86,7 @@ def get_dpdk_log_both(client_id, pid, seconds=900):
     keys_1s = [f"{client_id}:log:{pid}:1s:{ts}" for ts in timestamps]
     keys_5s = [f"{client_id}:log:{pid}:5s:{ts}" for ts in timestamps]
 
-    kv = get_redis_util(RedisConfig.from_app_config(current_app.config)).get_many(keys_1s + keys_5s)
+    kv = get_redis_util_no_config().get_many(keys_1s + keys_5s)
 
     result_1s, result_5s = [], []
     for key, data in kv.items():
@@ -97,7 +110,7 @@ def get_client_running_instances(client_id):
     """
     Get all running DPDK instances for a specific client.
     """
-    kv = get_redis_util(RedisConfig.from_app_config(current_app.config)).scan_with_values(f"{client_id}:info:*")
+    kv = get_redis_util_no_config().scan_with_values(f"{client_id}:info:*")
 
     result = []
     for data in kv.values():

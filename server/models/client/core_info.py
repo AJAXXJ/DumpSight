@@ -24,5 +24,3 @@ class CoreInfo(BaseModel):
     analyse_time = Column(Integer, nullable=True)
 
     total_time = Column(Integer, nullable=True)
-
-    state = Column(JSON, nullable=True)

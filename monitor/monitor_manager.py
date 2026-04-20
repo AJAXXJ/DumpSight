@@ -140,11 +140,12 @@ class RedisMonitorManager:
         Set preprocess dump core info in redis.
         """
         pid = str(pid)
-        timestamp = int(preprocess_info.get("timestamp", time.time()))
+        timestamp = int(preprocess_info.get("core_timestamp"))
         ttl = getattr(self.config, "core_info_ttl", None)
 
         key = f"{self.client_id}:core:{pid}:{timestamp}"
         self.redis.set(key, json.dumps(preprocess_info), expire=ttl)
+        return key
 
     def flush_dpdk_batch(self, batch):
         """

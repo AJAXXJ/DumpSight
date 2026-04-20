@@ -13,6 +13,7 @@ from agent.graphs.fault_analysis.edges import (
     edge_after_fetch,
     edge_after_retrieve,
     edge_after_root_cause,
+    edge_entry,
 )
 from agent.graphs.state import DPDKDiagnosisState
 
@@ -54,6 +55,14 @@ def build_fault_analysis_graph():
     b.add_edge("generate_report", END)
     b.add_edge("handle_error", END)
 
+    b.add_conditional_edges(
+        START,
+        edge_entry,
+        {
+            "fetch_data": "fetch_data",
+            "fetch_data_escalation": "fetch_data_escalation",
+        },
+    )
     # 正常流程入口
     b.add_conditional_edges(
         "fetch_data",

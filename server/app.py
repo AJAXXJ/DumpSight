@@ -7,6 +7,7 @@ from server.controller.client_controller import client_bp
 from server.controller.dashboard_controller import dashboard_bp
 from server.service.alert_service import alert_service
 from tools.mysql_util import get_mysql_util, init_mysql_util
+from tools.redis_util import init_redis_util
 
 
 def create_app(config_path="server-config.yaml"):
@@ -29,14 +30,17 @@ def create_app(config_path="server-config.yaml"):
     with app.app_context():
         get_mysql_util().init_db()
 
+    # 初始化 redis
+    init_redis_util(app.config)
+
     # 初始化监控
-    # start_sync_thread(
-    #     alert_handler=lambda alert: alert_service(alert),
-    #     fault_handler=lambda result: fault_handler(result),
-    #     fast_interval=app.config["FAST_INTERVAL"],
-    #     slow_interval=app.config["SLOW_INTERVAL"],
-    #     sync_interval=app.config["SYNC_INTERVAL"],
-    # )
+    start_sync_thread(
+        alert_handler=lambda alert: alert_service(alert),
+        fault_handler=lambda result: fault_handler(result),
+        fast_interval=app.config["FAST_INTERVAL"],
+        slow_interval=app.config["SLOW_INTERVAL"],
+        sync_interval=app.config["SYNC_INTERVAL"],
+    )
 
     # 接口注册
     app.register_blueprint(client_bp, url_prefix="/api/client")

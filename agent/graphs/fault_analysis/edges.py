@@ -2,6 +2,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def edge_entry(state) -> str:
+    if state.get("escalate_result"):
+        return "fetch_data_escalation"
+    return "fetch_data"
 
 def edge_after_fetch(state):
     """数据拉取后 有错误则进错误处理 否则进案例检索"""

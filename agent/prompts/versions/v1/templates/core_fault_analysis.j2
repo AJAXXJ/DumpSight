@@ -11,20 +11,9 @@ DPDK 信息：
 {{ core_info }}
 {% endif %}
 
-{% if anomaly_flags and anomaly_flags | length > 0 %}
-异常标志：{{ anomaly_flags | join("，") }}
-{% else %}
-无异常标注
-{% endif %}
-
 {% if log_feature %}
 崩溃前日志分析信息:
 {{ log_feature }}
-{% endif %}
-
-{% if reference_feature %}
-平均基线日志分析信息:
-{{ reference_feature }}
 {% endif %}
 
 {% if similar_cases %}

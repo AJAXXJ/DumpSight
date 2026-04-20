@@ -18,6 +18,9 @@
             "检查mbuf初始化流程",
             "增加空指针保护",
             "修复tx queue分配逻辑"
-        ]
+        ],
+        "log_feature": null,
+        "reference_feature": null,
+        "anomaly_flags": []
     }
 ]

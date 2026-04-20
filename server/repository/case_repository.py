@@ -50,6 +50,8 @@ def get_case(case_id):
     case = CaseInfo.get(case_id=case_id)
     return case if case else None
 
+def get_all_case():
+    return CaseInfo.all()
 
 def get_case_batch(case_ids):
     if not case_ids:

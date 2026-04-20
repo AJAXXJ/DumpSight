@@ -66,6 +66,9 @@ class Retrieval:
                     "root_cause": meta_case["root_cause"],
                     "repair_steps": meta_case["repair_steps"],
                     "description": meta_case["description"],
+                    "log_feature": meta_case["log_feature"],
+                    "reference_feature": meta_case["reference_feature"],
+                    "anomaly_flags": meta_case["anomaly_flags"]
                 }
             )
 

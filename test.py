@@ -68,7 +68,7 @@ def test_log_parse():
 
 
 if __name__ == "__main__":
-    # test_client_core_analyse()
+    test_client_core_analyse()
     # test_client_live_monitor()
     # test_log_parse()
-    pass
+    # pass

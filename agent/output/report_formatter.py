@@ -109,8 +109,7 @@ def _md_environment(state: DPDKDiagnosisState) -> str:
     )
 
 
-def _md_crash_stack(state: DPDKDiagnosisState) -> str:
-    def parse_call_chain_graph(state):
+def parse_call_chain_graph(state):
         # 获取崩溃函数
         crash_function = _get(
             state,
@@ -164,6 +163,7 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
             for callee in callees:
                 call_chain.append(f"{caller} -> {callee}")
 
+
         return {
             "crash_function": crash_function,
             "main_thread_stack": main_thread_stack,
@@ -171,37 +171,36 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
             "call_chain": call_chain,
         }
 
+def _md_crash_stack(state: DPDKDiagnosisState) -> str:
     parsed_data = parse_call_chain_graph(state)
 
     crash_function = parsed_data.get("crash_function", "N/A")
     main_thread_stack = "\n".join(parsed_data.get("main_thread_stack", []))
 
-    # 添加所有线程堆栈
     threads_report = ""
     for tid, thread_stack in parsed_data.get("threads_stack", {}).items():
         threads_report += (
             f"\n**线程 {tid} 堆栈**:\n```\n" + "\n".join(thread_stack) + "\n```\n"
         )
 
-    call_chain = "\n".join(parsed_data.get("call_chain", []))
-
-    return f"""
-    ## 崩溃信息报告
+    call_chain = "\n" + "\n".join(parsed_data.get("call_chain", [])) + "\n"
     
-    **崩溃函数**: `{crash_function}`
-    
-    **主线程堆栈**:
-    ```
-    {main_thread_stack}
-    ```
-    
-    {threads_report}
-
-    **调用链**:
-    ```
-    {call_chain}
-    ```
-    """
+    lines = [
+        "## 崩溃信息报告",
+        "",
+        f"**崩溃函数**: `{crash_function}`",
+        "",
+        "**主线程堆栈**:",
+        "```",
+        main_thread_stack,
+        "```",
+        threads_report,
+        "**调用链**:",
+        "```",
+        call_chain,
+        "```",
+    ]
+    return "\n".join(lines)
 
 
 def _md_escalate_result(state: DPDKDiagnosisState) -> str:

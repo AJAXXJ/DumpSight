@@ -103,7 +103,7 @@ def _calc_heap_stats(snapshot):
         heap_size = float(h.get("Heap_size") or 0)
         free_size = float(h.get("Free_size") or 0)
         greatest = float(h.get("Greatest_free_size") or 0)
-        result[hid] = {
+        result[str(hid)] = {
             "name": h.get("Name", f"heap_{hid}"),
             "heap_size": int(heap_size),
             "free_size": int(free_size),
@@ -134,7 +134,7 @@ def _calc_lcore_stats(snapshot):
             except Exception:
                 ur = 0.0
             if lid not in per_lcore or tc > per_lcore[lid]["total_cycles"]:
-                per_lcore[lid] = {
+                per_lcore[str(lid)] = {
                     "lcore_id": lid,
                     "usage_ratio": round(ur, 6),
                     "cycles_ratio": round(_ratio(bc, tc), 6),
@@ -209,7 +209,7 @@ def _calc_port_stats(samples):
         q_ib = bs.get("q_ibytes") or []
         q_er = bs.get("q_errors") or []
 
-        result[port_id] = {
+        result[str(port_id)] = {
             "link": {
                 "status": link.get("status"),
                 "speed": link.get("speed"),

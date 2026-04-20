@@ -65,8 +65,7 @@ class DPDKDiagnosisState(TypedDict, total=False):
     alert: dict[str, Any]
 
     repair_steps: list[str]
-    md_report: str
-    json_report: dict[str, Any]
+    report: str
 
     #  LangGraph 消息（自动累积）
     messages: Annotated[list[BaseMessage], add_messages]

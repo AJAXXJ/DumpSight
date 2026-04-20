@@ -13,3 +13,5 @@ python dumpsight.py monitor "/workspace/test/dpdk_crash -l 0-1 -n 4" --file_pref
 pyinstaller --onefile dumpsight.py 
 
 journalctl -u dumpsight.service -f
+
+ulimit -c unlimited
