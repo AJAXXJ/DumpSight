@@ -9,7 +9,7 @@
 DPDK 版本:    {{ dpdk_info.get("version", "unknown") }}
 运行环境:     {{ dpdk_info.get("environment", "unknown") }}
 启动参数:     {{ dpdk_info.get("eal_args", "unknown") }}
-
+崩溃描述:     {{ description }}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【触发预警的异常标志】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -110,7 +110,7 @@ CPU:
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【历史相似案例】
+【历史相似案例和相关修复信息】
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 {% if similar_cases %}
@@ -129,6 +129,14 @@ CPU:
 {% endfor %}
 {% else %}
   暂无相似历史案例，请基于当前指标独立分析。
+{% endif %}
+
+{% if knowledge_cases %}
+相关修复信息:
+{% for knowledge in knowledge_cases %}
+{{ knowledge.content }} 来自 {{ knowledge.key }}
+
+{% endfor %}
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

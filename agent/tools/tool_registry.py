@@ -11,9 +11,9 @@ class Tool:
         logger.info("Tool registered: %s", self.name)
 
     def invoke(self, inputs):
-        logger.info("Invoking tool: %s with inputs: %s", self.name, inputs)
+        # logger.info("Invoking tool: %s with inputs: %s", self.name, inputs)
         result = self.func(inputs)
-        logger.info("Tool %s output: %s", self.name, result)
+        # logger.info("Tool %s output: %s", self.name, result)
         return result
     
 

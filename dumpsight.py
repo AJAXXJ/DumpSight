@@ -28,9 +28,10 @@ def _configure_core_pattern(pattern):
     try:
         subprocess.run(
             ["tee", "/proc/sys/kernel/core_pattern"],
-            input=pattern,
+            input=pattern + "\n",
             text=True,
             check=True,
+            capture_output=True, 
         )
         click.echo(f"Core pattern configured via tee: {pattern}")
         return

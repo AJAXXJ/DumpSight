@@ -42,6 +42,11 @@ def get_llm(mode="fast"):
         # 第三方网关关键参数
         api_key=settings.openai_api_key or "EMPTY",
         base_url=settings.openai_api_base,
+        model_kwargs={
+            "extra_body": {
+                "enable_thinking": False,
+            }
+        },
     )
 
 

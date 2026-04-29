@@ -2,30 +2,6 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Set, Tuple, Any
-from functools import lru_cache
-
-
-# ═════════════════════════════════════════════════════════════════
-# CANONICAL REPRESENTATION 定义
-# ═════════════════════════════════════════════════════════════════
-#
-# 统一采用 EXECUTION ORDER（执行时间顺序）：
-#
-#   [root_function] → [intermediate] → ... → [crash_function]
-#      程序入口                                  崩溃点
-#
-# 所有数据结构遵循此方向：
-#   - callstack: List[CallNode]  按执行顺序排列
-#   - edges: List[CallEdge]      caller → callee（执行流向）
-#   - crash_signature:           从 crash 向 root 回溯 N 层
-#
-# GDB backtrace 原始格式（#0=crash, #n=root）需要在入口处翻转
-# ═════════════════════════════════════════════════════════════════
-
-
-# ─────────────────────────────────────────
-# 数据模型
-# ─────────────────────────────────────────
 
 
 @dataclass
@@ -122,6 +98,7 @@ class CallChainResult:
     threads: Dict[str, ThreadChain] = field(default_factory=dict)
     common_frames: List[str] = field(default_factory=list)
     call_graph: Dict[str, Set[str]] = field(default_factory=dict)
+    parse_warnings: list[dict] = field(default_factory=list)
 
     def to_dict(self):
         return {
@@ -136,24 +113,24 @@ class CallChainResult:
         }
 
 
-# ─────────────────────────────────────────
-# Frame 解析器（与方向无关的纯解析）
-# ─────────────────────────────────────────
-
 _FRAME_PATTERNS = [
+    # 模式1：标准格式，参数用非贪婪跳过，源文件在最后
     re.compile(
         r"^#(?P<idx>\d+)\s+"
         r"(?P<addr>0x[0-9a-fA-F]+)?\s*"
         r"(?:in\s+)?"
         r"(?P<func>[^\s(]+)"
-        r"(?:\s*\([^)]*\))?"
-        r"(?:\s+at\s+(?P<src>\S+:\d+))?"
+        r"(?:\s*\(.*?\))?"          # 非贪婪匹配参数，允许内部有任意内容
+        r"(?:\s+at\s+(?P<src>\S+:\d+))?",
+        re.DOTALL,
     ),
+    # 模式2：from 共享库格式
     re.compile(
         r"^#(?P<idx>\d+)\s+"
         r"(?P<func>[^\s(]+)"
-        r"(?:\s*\([^)]*\))?"
-        r"(?:\s+from\s+(?P<src>\S+))?"
+        r"(?:\s*\(.*?\))?"
+        r"(?:\s+from\s+(?P<src>\S+))?",
+        re.DOTALL,
     ),
 ]
 
@@ -200,11 +177,6 @@ def _normalize_func(raw_func: str) -> str:
     func = re.sub(r"<[^<>]*>", "", func)
     func = func.split("(")[0].strip()
     return func if func else "unknown"
-
-
-# ─────────────────────────────────────────
-# Backtrace → Canonical Representation
-# ─────────────────────────────────────────
 
 
 def _parse_backtrace_to_canonical(
@@ -277,11 +249,6 @@ def _dedup_consecutive_frames(nodes: List[CallNode]) -> List[CallNode]:
     return result
 
 
-# ─────────────────────────────────────────
-# 调用边构建（基于 canonical order）
-# ─────────────────────────────────────────
-
-
 def _build_edges(callstack: List[CallNode]) -> List[CallEdge]:
     """
     从 canonical callstack 构建调用边
@@ -313,11 +280,6 @@ def _detect_cycles(edges: List[CallEdge]) -> List[Tuple[str, str]]:
     return cycles
 
 
-# ─────────────────────────────────────────
-# Crash 特征提取（从 crash 向 root 回溯）
-# ─────────────────────────────────────────
-
-
 def _build_crash_signature(callstack: List[CallNode], depth: int = 4) -> str:
     """
     生成 crash 特征串（用于聚合相同类型崩溃）
@@ -339,18 +301,13 @@ def _build_crash_signature(callstack: List[CallNode], depth: int = 4) -> str:
     if not callstack:
         return "unknown"
 
-    # 从 crash 向 root 回溯
-    crash_to_root = list(reversed(callstack))
+    crash_to_root = [
+        n
+        for n in reversed(callstack)
+        if not any(skip in n.name for skip in ("__libc", "pthread_", "_start"))
+    ]
     key_frames = crash_to_root[:depth]
-
-    # 使用 < 表示"被...调用"（与执行方向相反）
-    signature = " < ".join(node.name for node in key_frames)
-    return signature
-
-
-# ─────────────────────────────────────────
-# 多线程分析（基于 canonical representation）
-# ─────────────────────────────────────────
+    return " < ".join(node.name for node in key_frames)
 
 
 def _find_common_frames(thread_chains: Dict[str, ThreadChain]) -> List[str]:
@@ -359,10 +316,7 @@ def _find_common_frames(thread_chains: Dict[str, ThreadChain]) -> List[str]:
         return []
 
     frame_sets = [
-        {
-            node.name[0] if isinstance(node.name, list) else node.name
-            for node in chain.callstack
-        }
+        {node.name for node in chain.callstack} - _INVALID_FUNCS
         for chain in thread_chains.values()
     ]
 
@@ -383,13 +337,11 @@ def _build_global_call_graph(
 ):
     graph: Dict[str, Set[str]] = defaultdict(set)
 
-    # ── main thread ─────────────────────────
     for edge in main.edges:
         caller = _safe(edge.caller)
         callee = _safe(edge.callee)
         graph[caller].add(callee)
 
-    # ── other threads ───────────────────────
     for chain in threads.values():
         for edge in chain.edges:
             caller = _safe(edge.caller)
@@ -399,18 +351,123 @@ def _build_global_call_graph(
     return dict(graph)
 
 
-def to_llm_input(result: CallChainResult):
+def to_llm_input(
+    result: CallChainResult, raw_meta: dict = None, context: dict = None
+) -> dict:
+
+    raw_meta = raw_meta or {}
+    callstack = result.main_thread.callstack
+    is_truncated = (
+        raw_meta.get("suggest_rerun_with_debuginfo", False)
+        or (
+            len(callstack) <= 1
+            and not any(n.source for n in callstack)  # 无任何源文件位置
+        )
+    )
+
+    # ── 截断降级路径 ──
+    if is_truncated:
+        return {
+            "analysis_mode": "env_diagnostic",
+            "backtrace_quality": "insufficient",
+            "backtrace_warning": (
+                "backtrace 仅有 1 帧且无调试符号，调用链不可用。"
+                "禁止基于调用链推断根因。"
+            ),
+            "crash_function": result.crash_function,
+            "signal": raw_meta.get("signal_name", "未知"),
+            "crash_address_region": raw_meta.get("crash_address_region", "未知"),
+            "thread_count": (raw_meta.get("threads") or {}).get("total", 1),
+            "crashed_thread": str((raw_meta.get("threads") or {}).get("crashed", {})),
+            "abnormal_threads": (raw_meta.get("threads") or {}).get("abnormal", []),
+            "rerun_suggestion": "使用 -g 重新编译并保留调试符号后复现",
+            # 以下字段置空，防止 prompt 模板访问时 KeyError
+            "crash_context_frames": "",
+            "execution_path": "",
+            "execution_path_note": "",
+            "threads_detail": "",
+            "common_frames_note": "",
+            "call_graph_hotspots": "",
+            "parse_warnings": "",
+            "crash_signature": result.crash_signature,
+            "main_path": "",
+        }
+
+    main = result.main_thread
+    callstack = main.callstack
+
+    # ── 1. 崩溃现场（最关键的 N 帧，带源码位置）──
+    crash_context = []
+    for node in reversed(callstack[-8:]):  # crash 端取 8 帧
+        loc = f" @ {node.source}" if node.source else ""
+        crash_context.append(f"  #{node.gdb_depth:>2} {node.name}{loc}")
+
+    # ── 2. 调用路径摘要（分段，突出入口和崩溃点）──
+    if len(callstack) > 12:
+        head = [n.name for n in callstack[:3]]
+        tail = [n.name for n in callstack[-5:]]
+        path_summary = " → ".join(head) + "  …  " + " → ".join(tail)
+        omitted = len(callstack) - 8
+        path_note = f"(full depth: {len(callstack)}, {omitted} frames omitted)"
+    else:
+        path_summary = " → ".join(n.name for n in callstack)
+        path_note = ""
+
+    # ── 3. 线程异常信号（找出与主线程崩溃函数相同的线程）──
+    suspicious_threads = []
+    for tid, chain in result.threads.items():
+        thread_funcs = {n.name for n in chain.callstack}
+        overlap = thread_funcs & {n.name for n in callstack[-5:]}
+        tail_repr = " → ".join(n.name for n in chain.callstack[-4:])
+        if overlap:
+            suspicious_threads.append(
+                f"  [{tid}] shares frames {overlap} | tail: {tail_repr}"
+            )
+        else:
+            suspicious_threads.append(f"  [{tid}] {tail_repr}")
+
+    # ── 4. 公共帧（暗示系统级共享状态）──
+    common_note = (
+        "Threads share frames: " + ", ".join(result.common_frames)
+        if result.common_frames
+        else "No common frames across threads"
+    )
+
+    # ── 5. 解析警告（符号可信度）──
+    warnings_text = ""
+    if result.parse_warnings:
+        warnings_text = "⚠ Parse warnings:\n" + "\n".join(
+            f"  - {w['type']}: declared={w.get('declared')} resolved={w.get('resolved')}"
+            for w in result.parse_warnings
+        )
+
+    # ── 6. 调用图中的高扇出节点（潜在共享资源竞争点）──
+    hotspots = [
+        f"  {caller} → [{len(callees)} callees]: {', '.join(sorted(callees)[:4])}"
+        for caller, callees in result.call_graph.items()
+        if len(callees) >= 3
+    ]
+
     return {
         "main_path": " → ".join(n.name for n in result.main_thread.callstack),
-        "call_relations": "\n".join(
-            f"{src} -> {dst}" for src, dsts in result.call_graph.items() for dst in dsts
-        ),
-        "crash_signature": result.crash_signature,
-        "threads_summary": "\n".join(
-            f"{tid}: " + " → ".join(n.name for n in t.callstack[-5:])
-            for tid, t in result.threads.items()
-        ),
+        # 给 LLM 的顶层诊断提示
         "crash_function": result.crash_function,
+        "crash_signature": result.crash_signature,
+        # 崩溃现场（最重要）
+        "crash_context_frames": "\n".join(crash_context),
+        # 完整路径摘要（结构感）
+        "execution_path": path_summary,
+        "execution_path_note": path_note,
+        # 线程视角
+        "thread_count": len(result.threads) + 1,
+        "threads_detail": (
+            "\n".join(suspicious_threads) if suspicious_threads else "single-threaded"
+        ),
+        "common_frames_note": common_note,
+        # 潜在问题点
+        "call_graph_hotspots": "\n".join(hotspots) if hotspots else "none",
+        # 可信度
+        "parse_warnings": warnings_text,
     }
 
 
@@ -439,7 +496,6 @@ def parse_call_chain(
         return bt
 
     backtrace = unwrap_backtrace(backtrace)
-    # ── 主线程解析 ──────────────────────────
     main_callstack = _parse_backtrace_to_canonical(backtrace)
 
     if not main_callstack:
@@ -447,7 +503,25 @@ def parse_call_chain(
         return CallChainResult(
             crash_function="unknown",
             crash_signature="unknown",
-            main_thread=ThreadChain(tid="main"),
+            main_thread=ThreadChain(tid="main"),_FRAME_PATTERNS = [
+    # 模式1：带地址 + 带参数 + 带源文件
+    # #0  0x0000564a6fba39f7 in main (argc=6, argv=0x...) at file.c:44
+    re.compile(
+        r"^#(?P<idx>\d+)\s+"
+        r"(?P<addr>0x[0-9a-fA-F]+)?\s*"
+        r"(?:in\s+)?"
+        r"(?P<func>[^\s(]+)"
+        r"(?:\s*\([^)]*(?:\([^)]*\)[^)]*)*\))?"  # 修改：支持嵌套括号参数
+        r"(?:\s+at\s+(?P<src>\S+:\d+))?"
+    ),
+    # 模式2：无地址 + from 共享库
+    re.compile(
+        r"^#(?P<idx>\d+)\s+"
+        r"(?P<func>[^\s(]+)"
+        r"(?:\s*\([^)]*\))?"
+        r"(?:\s+from\s+(?P<src>\S+))?"
+    ),
+]
         )
 
     main_chain = ThreadChain(
@@ -457,23 +531,24 @@ def parse_call_chain(
         crash_func=main_callstack[-1].name,  # execution order 最后一个
     )
 
-    # ── Crash function 对齐校验 ─────────────
     declared_crash = (
         _normalize_func(crash_frame.get("function", "")) if crash_frame else None
     )
 
     resolved_crash = main_chain.crash_func
+    mismatches = []
 
     if declared_crash and declared_crash != resolved_crash:
-        import warnings
+        mismatches = []
+        if declared_crash and declared_crash != resolved_crash:
+            mismatches.append(
+                {
+                    "type": "crash_frame_mismatch",
+                    "declared": declared_crash,  # crash_frame 字段说的是这个函数
+                    "resolved": resolved_crash,  # backtrace #0 实际解析出来的是这个
+                }
+            )
 
-        warnings.warn(
-            f"crash_frame 声明 '{declared_crash}' 与 backtrace #0 解析 "
-            f"'{resolved_crash}' 不一致，以 backtrace 为准",
-            stacklevel=2,
-        )
-
-    # ── 多线程解析 ──────────────────────────
     thread_chains: Dict[str, ThreadChain] = {}
     if threads_bt:
         for tid, bt in threads_bt.items():
@@ -486,20 +561,17 @@ def parse_call_chain(
                     crash_func=callstack[-1].name,
                 )
 
-    # ── 全局分析 ────────────────────────────
     all_chains = {"main": main_chain, **thread_chains}
     common_frames = _find_common_frames(all_chains)
     call_graph = _build_global_call_graph(main_chain, thread_chains)
 
-    # ── 环检测 ──────────────────────────────
     cycles = _detect_cycles(main_chain.edges)
     if cycles:
         import warnings
 
         warnings.warn(f"检测到调用环（可能为递归或符号错误）: {cycles}", stacklevel=2)
 
-    # ── Crash 特征串 ─────────────────────────
-    signature = _build_crash_signature(main_callstack, depth=4)
+    signature = _build_crash_signature(main_callstack, depth=20)
 
     return CallChainResult(
         crash_function=resolved_crash,
@@ -508,4 +580,5 @@ def parse_call_chain(
         threads=thread_chains,
         common_frames=common_frames,
         call_graph=call_graph,
+        parse_warnings=mismatches,
     )

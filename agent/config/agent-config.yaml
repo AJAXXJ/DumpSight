@@ -49,3 +49,10 @@ langgraph:
 log:
   level: INFO
   json: false
+
+
+elasticsearch:
+  host: "http://192.168.122.1:9200"
+  user: null
+  password: null
+  index: "dumpsight_cases"

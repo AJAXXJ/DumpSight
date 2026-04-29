@@ -6,9 +6,59 @@
 DPDK 信息：
 {{ dpdk_info }}
 
+崩溃描述:
+{{ description }}
+
 {% if core_info %}
-崩溃 core gdb 分析信息：
-{{ core_info }}
+## 崩溃分析数据
+
+{% if core_info.analysis_mode == "env_diagnostic" %}
+### ⚠ Backtrace 不可用
+{{ core_info.backtrace_warning }}
+复现建议: {{ core_info.rerun_suggestion }}
+
+### 崩溃基本信息
+- 信号: {{ core_info.signal }}
+- 崩溃函数: {{ core_info.crash_function }}（无符号）
+- 地址区域: {{ core_info.crash_address_region }}
+
+{% else %}
+### 1. 崩溃现场（优先采信）
+- 信号: {{ core_info.signal }}
+- 崩溃函数: {{ core_info.crash_function }}
+崩溃帧:
+{{ core_info.crash_context_frames }}
+
+{% if core_info.crash_pattern %}
+### 2. 已识别崩溃模式（不得与此矛盾）
+{{ core_info.crash_pattern }}
+{% endif %}
+
+### 3. 执行路径
+{{ core_info.execution_path }}
+{{ core_info.execution_path_note }}
+{% endif %}
+
+### 线程状态（非崩溃线程不作为根因依据）
+- 总数: {{ core_info.thread_count }}
+{% if core_info.abnormal_threads %}
+- 异常线程:
+{% for t in core_info.abnormal_threads %}
+  [{{ t.id }}] {{ t.bt_top }}
+{% endfor %}
+{% endif %}
+
+### 设备绑定
+{% if core_info.device_binding_issues %}
+{% for d in core_info.device_binding_issues %}
+⚠ {{ d.slot }} 驱动异常: {{ d.driver }} — {{ d.msg }}
+{% endfor %}
+{% else %}
+所有 DPDK 探测设备绑定正常，设备绑定不是本次崩溃的原因，禁止在根因中提及。
+{% endif %}
+
+### 内存资源
+{{ core_info.hugepage_usage }}
 {% endif %}
 
 {% if log_feature %}
@@ -30,6 +80,15 @@ DPDK 信息：
 修复步骤: {{ case.repair_steps }}
 {% endfor %}
 {% endif %}
+
+{% if knowledge_cases %}
+相关修复信息:
+{% for knowledge in knowledge_cases %}
+{{ knowledge.content }} 来自 {{ knowledge.key }}
+
+{% endfor %}
+{% endif %}
+
 
 {% if few_shots %}
 参考示例：

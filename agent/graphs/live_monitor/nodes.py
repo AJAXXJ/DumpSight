@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import time
 import uuid
 from typing import Any
@@ -26,12 +27,16 @@ _builder = PromptBuilder(registry=get_registry())
 _tools = get_tools()
 _alert_rules = load_alert_rules()
 
-# key: "client_id:rule_id"   → 规则级冷却（细粒度）
-# key: "client_id:severity"  → severity级冷却（粗粒度兜底）
+# key: "client_id:rule:<rule_id>"     → 规则级冷却（细粒度）
+# key: "client_id:severity:<level>"   → severity级冷却（粗粒度兜底）
 _cooldown_registry: dict[str, float] = {}
+
+# 所有冷却读写都通过此锁保护，防止多线程 TOCTOU
+_cooldown_lock = threading.Lock()
 
 # reference_feature 模块级缓存，key: "client_id:pid"
 _reference_cache: dict[str, dict] = {}
+_reference_cache_lock = threading.Lock()
 _REFERENCE_CACHE_TTL = 300.0  # 5分钟更新一次基线
 
 
@@ -46,12 +51,21 @@ def _reset_state() -> dict:
     """
     返回每轮执行开始时所有输出字段的初始值。
     在 node_fetch_metrics 中调用，防止 LangGraph State 跨轮残留。
+
+    注意：allow_semantic 不在此处重置，由调用层（run_fast/slow_poll）
+    通过入参 state 传入，fetch_metrics 负责透传到输出 State。
     """
     return {
         "rule_flags": [],
         "semantic_flags": [],
         "anomaly_flags": [],
         "should_alert": False,
+        # 将升级意图拆为两个独立字段，语义更清晰：
+        #   - escalate_from_semantic: LLM 语义检测判定需要升级
+        #   - escalate_to_fault:      最终由 risk_assessment 综合决定是否升级
+        # edge_after_risk 和 edge_after_alert 只读 escalate_to_fault，
+        # 由 risk_assessment 统一写入，消除双写竞争。
+        "escalate_from_semantic": False,
         "escalate_to_fault": False,
         "alert_input": {},
         "alert": {},
@@ -95,6 +109,9 @@ def node_fetch_metrics(state, config):
                 **base,
                 "error": f"客户端 {cid} DPDK {pid} 实例暂无日志数据",
                 "run_id": run_id,
+                # FIX [问题二]：allow_semantic 在 fetch_metrics 输出中显式保留，
+                # 确保后续节点和边函数能稳定读取，不依赖 State 残留。
+                "allow_semantic": state.get("allow_semantic", True),
             }
 
         statistic_1s = log_1s_statistic(metrics_1s)
@@ -106,7 +123,12 @@ def node_fetch_metrics(state, config):
 
     except Exception as exc:
         logger.exception("fetch_metrics failed | run_id=%s", run_id)
-        return {**base, "error": f"指标拉取失败: {exc}", "run_id": run_id}
+        return {
+            **base,
+            "error": f"指标拉取失败: {exc}",
+            "run_id": run_id,
+            "allow_semantic": state.get("allow_semantic", True),
+        }
 
     return {
         **base,
@@ -116,7 +138,8 @@ def node_fetch_metrics(state, config):
         "log_feature": log_feature,
         "reference_feature": reference_feature,
         "alert_rules": _alert_rules,
-        # P2：默认允许语义检测，调度层可通过 state 覆盖
+        # 显式透传 allow_semantic，不依赖 State 字段默认值，
+        # 防止后续节点误写污染路由判断。
         "allow_semantic": state.get("allow_semantic", True),
     }
 
@@ -128,13 +151,21 @@ def node_rule_detection(state, config):
     基于 log_feature + reference_feature 遍历所有启用规则。
     规则级冷却在引擎内部过滤，冷却期内的规则不计入结果。
     结果写入独立字段 rule_flags，不直接写 anomaly_flags。
+
+    用 try/except 包裹规则引擎，异常时返回 error 字段
+    走 handle_error，而不是直接穿透 LangGraph 导致 invoke 抛出。
     """
-    rule_flags = _run_rule_engine(
-        state["log_feature"],
-        state["reference_feature"],
-        state["alert_rules"],
-        state["client_info"].get("client_id", "unknown"),
-    )
+    try:
+        rule_flags = _run_rule_engine(
+            state["log_feature"],
+            state["reference_feature"],
+            state["alert_rules"],
+            state["client_info"].get("client_id", "unknown"),
+        )
+    except Exception as exc:
+        logger.exception("rule_detection failed | run_id=%s", state.get("run_id"))
+        return {"rule_flags": [], "error": f"规则引擎执行失败: {exc}"}
+
     logger.info(
         "rule_detection done | run_id=%s flags=%s", state.get("run_id"), rule_flags
     )
@@ -146,15 +177,22 @@ def node_semantic_detection(state, config):
     语义检测节点（第二阶段）：仅在规则引擎无异常且允许语义检测时执行。
 
     结果写入独立字段 semantic_flags，不直接写 anomaly_flags。
+    LLM 升级意图写入 escalate_from_semantic（与 escalate_to_fault 解耦），
+    由 risk_assessment 统一决策是否最终升级。
     LLM 调用失败时静默降级，不影响整体流程。
     """
-    # P2：allow_semantic 控制是否触发语义检测
     if not state.get("allow_semantic", True):
         logger.info(
             "semantic detection skipped by allow_semantic=False | run_id=%s",
             state.get("run_id"),
         )
-        return {"semantic_flags": [], "escalate_to_fault": False, "prompt_meta": {}}
+        return {
+            "semantic_flags": [],
+            # 写 escalate_from_semantic 而非 escalate_to_fault，
+            # 避免在 risk_assessment 之前提前污染最终升级标志。
+            "escalate_from_semantic": False,
+            "prompt_meta": {},
+        }
 
     semantic_flags, escalate, prompt_meta = _run_semantic_detection(state, config)
     logger.info(
@@ -165,7 +203,7 @@ def node_semantic_detection(state, config):
     )
     return {
         "semantic_flags": semantic_flags,
-        "escalate_to_fault": escalate,
+        "escalate_from_semantic": escalate,
         "prompt_meta": prompt_meta,
         "error": "",
     }
@@ -179,25 +217,32 @@ def node_risk_assessment(state, config):
         1. 合并去重两路检测结果为 anomaly_flags
         2. 无异常直接返回 should_alert=False
         3. 计算最高 severity（critical > warning > info）
-        4. 判断是否需要故障升级
+        4. 判断是否需要故障升级（综合 escalate_from_semantic 和规则配置）
         5. severity 级全局冷却兜底（规则级冷却已在引擎层处理）
         6. 通过后构造 alert_input 传递给 alert_generation
+
+    escalate_to_fault 仅在此节点统一写入，
+    消除 semantic_detection 和 risk_assessment 的双写竞争。
     """
-    # P3：合并两路独立输出
     all_flags = _deduplicate(
         state.get("rule_flags", []) + state.get("semantic_flags", [])
     )
 
     if not all_flags:
-        return {"anomaly_flags": [], "should_alert": False}
+        return {
+            "anomaly_flags": [],
+            "should_alert": False,
+            "escalate_to_fault": False,
+        }
 
     severity = _compute_severity(all_flags, state["alert_rules"])
-    escalate = state.get("escalate_to_fault", False) or _has_escalation_flag(
+    # 读 escalate_from_semantic（语义节点的独立输出），
+    # 再与规则配置合并，统一写入 escalate_to_fault。
+    escalate = state.get("escalate_from_semantic", False) or _has_escalation_flag(
         all_flags, state["alert_rules"]
     )
     client_id = state["client_info"].get("client_id", "unknown")
 
-    # severity 级粗粒度冷却兜底
     if _in_severity_cooldown(client_id, severity):
         logger.info(
             "alert suppressed by severity cooldown | client=%s severity=%s",
@@ -228,6 +273,10 @@ def node_alert_generation(state, config):
 
     LLM 调用失败时降级为结构化模板文本（包含关键指标数值），
     保证告警不丢失且 fallback 内容本身足够可读。
+
+    本节点不再写 escalate_to_fault，
+    edge_after_alert 读取的是 risk_assessment 已经写定的值，
+    消除了"alert_generation 之后才设置升级标志"的死分支。
     """
     alert_input = state.get("alert_input", {})
     log_feature = alert_input.get("log_feature", state.get("log_feature", {}))
@@ -275,7 +324,6 @@ def node_escalate_to_fault(state, config):
         state.get("anomaly_flags"),
         state.get("run_id"),
     )
-
     return {
         "escalate_to_fault": True,
         "mode": "fault_analysis",
@@ -294,20 +342,47 @@ def node_handle_error(state, config):
     return {"should_alert": False, "escalate_to_fault": False}
 
 
-def cleanup_clients(client_ids):
+def cleanup_clients(client_ids: list[str]):
     """
     清理离线客户端的冷却记录和 reference 缓存。
     在客户端断开连接或主动注销时调用，防止内存泄漏。
+
+    如需只清理特定 pid 而非整个客户端，
+    请改用 cleanup_client_pid(client_id, pid)。
+    当前实现清理 client_id 下所有 pid 的缓存，
+    适用于客户端完全下线（所有 DPDK 进程消失）的场景。
     """
     client_set = set(client_ids)
 
-    for k in [k for k in _cooldown_registry if k.split(":")[0] in client_set]:
-        _cooldown_registry.pop(k, None)
+    with _cooldown_lock:
+        for k in [k for k in _cooldown_registry if k.split(":")[0] in client_set]:
+            _cooldown_registry.pop(k, None)
 
-    for k in [k for k in _reference_cache if k.split(":")[0] in client_set]:
-        _reference_cache.pop(k, None)
+    with _reference_cache_lock:
+        for k in [k for k in _reference_cache if k.split(":")[0] in client_set]:
+            _reference_cache.pop(k, None)
 
     logger.info("client cache cleaned | clients=%s", client_ids)
+
+
+def cleanup_client_pid(client_id: str, pid: int):
+    """
+    精确清理单个 pid 的 reference 缓存。
+    适用于客户端部分 pid 下线的场景，不影响同 client_id 下的其他 pid。
+    冷却记录仍按 client_id 前缀清理（规则冷却与 pid 无关）。
+    """
+    cache_key = f"{client_id}:{pid}"
+    with _reference_cache_lock:
+        _reference_cache.pop(cache_key, None)
+
+    with _cooldown_lock:
+        for k in [k for k in _cooldown_registry if k.startswith(f"{client_id}:")]:
+            _cooldown_registry.pop(k, None)
+
+    logger.info("pid cache cleaned | client=%s pid=%s", client_id, pid)
+
+
+# ── 内部实现 ──────────────────────────────────────────────────────────────────
 
 
 def _get_reference_feature(cid: str, pid: int) -> dict:
@@ -317,18 +392,21 @@ def _get_reference_feature(cid: str, pid: int) -> dict:
     同时拉取 1s 和 5s 历史日志，保证与 log_feature 的字段口径一致：
     - rx_pps / rx_errors / queue_imbalance / mempool_free：来自 1s 日志
     - heap_free / heap_frag / cpu_avg：来自 5s 日志
+
+    缓存读写通过 _reference_cache_lock 保护，
+    防止多线程并发导致重复重建。
     """
     cache_key = f"{cid}:{pid}"
-    cached = _reference_cache.get(cache_key)
 
-    if cached and (time.time() - cached["updated_at"]) < _REFERENCE_CACHE_TTL:
-        logger.debug("reference_feature cache hit | client=%s pid=%s", cid, pid)
-        return cached["feature"]
+    with _reference_cache_lock:
+        cached = _reference_cache.get(cache_key)
+        if cached and (time.time() - cached["updated_at"]) < _REFERENCE_CACHE_TTL:
+            logger.debug("reference_feature cache hit | client=%s pid=%s", cid, pid)
+            return cached["feature"]
 
     logger.info("reference_feature cache miss, rebuilding | client=%s pid=%s", cid, pid)
 
     try:
-        # P1+P6：同时拉取 1s 和 5s 历史日志，口径与 log_feature 对齐
         ref_metrics_1s = _tools["log_1s"].invoke(
             {"client_id": cid, "pid": pid, "seconds": 300}
         )
@@ -340,7 +418,9 @@ def _get_reference_feature(cid: str, pid: int) -> dict:
         logger.warning("reference_feature rebuild failed, use empty | %s", exc)
         feature = {}
 
-    _reference_cache[cache_key] = {"feature": feature, "updated_at": time.time()}
+    with _reference_cache_lock:
+        _reference_cache[cache_key] = {"feature": feature, "updated_at": time.time()}
+
     return feature
 
 
@@ -385,15 +465,17 @@ def _run_rule_engine(
     """
     确定性规则引擎。
 
-    P0：规则级冷却在此处过滤，冷却期内的规则直接跳过，
+    规则级冷却在此处过滤，冷却期内的规则直接跳过。
     使用规则自身配置的 cooldown_sec，粒度为 client_id:rule_id。
+
+    冷却检查与写入都通过 _in_rule_cooldown /
+    _update_rule_cooldown 加锁操作，消除多线程 TOCTOU 窗口。
     """
     flags = []
     for rule in rules:
         if not rule.enabled:
             continue
 
-        # P0：规则级冷却检查
         if _in_rule_cooldown(client_id, rule.id, rule.cooldown_sec):
             logger.debug("rule in cooldown | id=%s client=%s", rule.id, client_id)
             continue
@@ -406,7 +488,7 @@ def _run_rule_engine(
 
         if _evaluate_condition(value, rule.condition, rule.threshold, ref_value):
             flags.append(rule.id)
-            _update_rule_cooldown(client_id, rule.id)  # P0：触发后立即写入冷却
+            _update_rule_cooldown(client_id, rule.id)
             logger.debug(
                 "rule triggered | id=%s value=%s ref=%s", rule.id, value, ref_value
             )
@@ -418,6 +500,9 @@ def _run_semantic_detection(state, config) -> tuple[list[str], bool, dict]:
     """
     LLM 语义检测，仅在规则无异常时调用。
     失败时静默降级返回空结果。
+
+    返回值中的 bool 表示 LLM 判定是否需要升级（escalate_from_semantic），
+    而非直接写 escalate_to_fault。
     """
     try:
         messages, meta = _builder.build_anomaly_detection(
@@ -519,34 +604,43 @@ def _has_escalation_flag(flags: list, rules) -> bool:
     return any(rule_map.get(f) and rule_map[f].escalate_to_fault for f in flags)
 
 
-# ── P0：规则级冷却（细粒度）──────────────────
+# ── 规则级冷却（细粒度）──────────────────────────────────────────────────────
 
 
 def _in_rule_cooldown(client_id: str, rule_id: str, cooldown_sec: int) -> bool:
-    """判断指定规则是否处于冷却期（粒度：client_id:rule_id）。"""
+    """
+    判断指定规则是否处于冷却期（粒度：client_id:rule_id）。
+
+    加锁读取，与 _update_rule_cooldown 共享同一把锁，
+    消除检查-触发之间的 TOCTOU 窗口。
+    """
     key = f"{client_id}:rule:{rule_id}"
-    return (time.time() - _cooldown_registry.get(key, 0.0)) < cooldown_sec
+    with _cooldown_lock:
+        return (time.time() - _cooldown_registry.get(key, 0.0)) < cooldown_sec
 
 
 def _update_rule_cooldown(client_id: str, rule_id: str):
-    """规则触发后写入冷却时间戳。"""
-    _cooldown_registry[f"{client_id}:rule:{rule_id}"] = time.time()
+    """规则触发后写入冷却时间戳（加锁）。"""
+    with _cooldown_lock:
+        _cooldown_registry[f"{client_id}:rule:{rule_id}"] = time.time()
 
 
-# ── severity 级冷却（粗粒度兜底）────────────
+# ── severity 级冷却（粗粒度兜底）────────────────────────────────────────────
 
 
 def _in_severity_cooldown(client_id: str, severity: str) -> bool:
-    """判断指定 severity 等级是否处于全局冷却期（粒度：client_id:severity）。"""
+    """判断指定 severity 等级是否处于全局冷却期（加锁）。"""
     key = f"{client_id}:severity:{severity}"
-    return (
-        time.time() - _cooldown_registry.get(key, 0.0)
-    ) < settings.alert_cooldown_sec
+    with _cooldown_lock:
+        return (
+            time.time() - _cooldown_registry.get(key, 0.0)
+        ) < settings.alert_cooldown_sec
 
 
 def _update_severity_cooldown(client_id: str, severity: str):
-    """更新 severity 级全局冷却时间戳。"""
-    _cooldown_registry[f"{client_id}:severity:{severity}"] = time.time()
+    """更新 severity 级全局冷却时间戳（加锁）。"""
+    with _cooldown_lock:
+        _cooldown_registry[f"{client_id}:severity:{severity}"] = time.time()
 
 
 def _deduplicate(flags: list) -> list:

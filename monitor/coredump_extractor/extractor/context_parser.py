@@ -309,6 +309,10 @@ def parse_gdb_context(pid, context, log_path=None):
     """
     解析 GDB 上下文
     """
+    if not log_path:
+        context["app_log_status"] = "no_path_provided"
+        return
+    
     steps = [
         (extract_proc_info, (pid, context)),
         (extract_dpdk_hugepage, (context,)),
@@ -328,3 +332,62 @@ def parse_gdb_context(pid, context, log_path=None):
             })
 
     return context
+
+_DPDK_USERSPACE_DRIVERS = {"vfio-pci", "uio_pci_generic", "igb_uio"}
+
+
+def build_core_info_for_prompt(
+    call_chain_llm: dict,
+    raw_meta: dict,
+    context: dict,
+) -> dict:
+    """
+    将 parse_gdb_output 的结果 + context 转换为 prompt 可直接渲染的字段。
+    call_chain_llm 已经是 to_llm_input 的输出。
+    """
+    is_truncated = call_chain_llm.get("analysis_mode") == "env_diagnostic"
+
+    # ── 设备绑定：只传异常项，正常时明确置 None ──
+    nic_status = context.get("nic_status", {})
+    network_devs = nic_status.get("network", []) if isinstance(nic_status, dict) else []
+    app_log = context.get("app_log_parsed", {})
+    probed_devices = {
+        p["device"] for p in app_log.get("pci_probes", [])
+    }  # 例如 {"0000:00:08.0"}
+
+    device_issues = [
+        {"slot": d["pci"], "driver": d["drv"], "msg": "使用内核驱动，无法被 DPDK 接管"}
+        for d in network_devs
+        if d.get("drv")
+        and d["drv"] not in _DPDK_USERSPACE_DRIVERS
+        and d["pci"] in probed_devices  # ← 只看 DPDK 真正尝试用的设备
+    ]
+    # ── Hugepage ──
+    hp_2m = context.get("hugepages", {}).get("hugepages_2M", {})
+    try:
+        total = int(hp_2m.get("total", 0))
+        free  = int(hp_2m.get("free", 0))
+        used  = total - free
+        note  = " ⚠ 接近耗尽" if total and free < total * 0.1 else " (充足)"
+        hugepage_usage = f"2M hugepages: {used}/{total} used{note}"
+    except (ValueError, TypeError):
+        hugepage_usage = "未知"
+
+    # ── EAL 内部线程二次过滤兜底 ──
+    _EAL_INTERNAL_FUNCS = {"mp_handle", "eal_intr_handle_events", "rte_ctrl_thread_create"}
+    
+    raw_abnormal = call_chain_llm.get("abnormal_threads", [])
+    filtered_abnormal = [
+        t for t in raw_abnormal
+        if not any(f in t.get("bt_top", "") for f in _EAL_INTERNAL_FUNCS)
+    ]
+
+    # ── 把 call_chain_llm 的字段直接透传，补充 context 衍生字段 ──
+    return {
+        **call_chain_llm,  # 包含 analysis_mode / backtrace_quality / crash_function 等
+        "is_truncated": is_truncated,
+        "device_binding_issues": device_issues or None,
+        "hugepage_usage": hugepage_usage,
+        "abnormal_threads": filtered_abnormal,
+        # 异常线程从 call_chain_llm 已有，不重复提取
+    }

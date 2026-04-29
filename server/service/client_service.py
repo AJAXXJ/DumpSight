@@ -1,6 +1,9 @@
 import datetime
+
+import numpy as np
 from agent.graphs.fault_analysis.graph import get_fault_analysis_graph
 from agent.main import run_fault_analyse
+from server.notification.crash_mail import send_crash_notification
 from server.repository.client_redis import (
     get_dpdk_core_info,
     get_dpdk_core_info_by_key,
@@ -80,8 +83,33 @@ def client_core_analyse_service(crash_info):
         core_info.get("process_time"),
         analyse_time,
         total_time,
+        sanitize_for_json(result)
     )
 
+    # 触发预警
+    send_crash_notification(
+        client_id=client_id,
+        pid=pid,
+        crash_time=datetime.datetime.fromtimestamp(
+            core_info["core_timestamp"]
+        ).strftime("%Y-%m-%d %H:%M:%S"),
+        description=result["description"],
+        root_cause=result["root_cause"],
+    )
+
+def sanitize_for_json(obj):
+    """递归把 numpy 数值转成 Python 原生类型。"""
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(i) for i in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
 
 def is_client_alive(client, timeout=30):
     """

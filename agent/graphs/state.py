@@ -35,6 +35,7 @@ class DPDKDiagnosisState(TypedDict, total=False):
     reference_feature: dict[str, Any]  # baseline特征（长期统计）
 
     #  检测层（Detection）
+    alert_rules: dict[str, Any]
     rule_flags: list[str]
     semantic_flags: list[str]
 
@@ -46,7 +47,7 @@ class DPDKDiagnosisState(TypedDict, total=False):
 
     should_alert: bool
     escalate_to_fault: bool
-
+    escalate_from_semantic: bool
     alert_input: dict[str, Any]
 
     # 控制语义检测是否执行（性能优化）
@@ -55,6 +56,7 @@ class DPDKDiagnosisState(TypedDict, total=False):
     #  分析层（Fault Analysis 专用）
     description: str
     retrieved_cases: list[dict[str, Any]]
+    knowledge_cases: list[dict[str, Any]]
 
     root_cause: str
     confidence: Literal["high", "medium", "low"]

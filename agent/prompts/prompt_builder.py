@@ -67,7 +67,15 @@ class PromptBuilder:
 
     # 故障分析 Graph 节点：root_cause_reasoning
     def build_core_fault_analysis(
-        self, *, client_info, dpdk_info, core_info, log_feature, similar_cases
+        self,
+        *,
+        client_info,
+        dpdk_info,
+        core_info,
+        description,
+        log_feature,
+        similar_cases,
+        knowledge_cases,
     ):
         """
         构建故障根因分析 prompt - 崩溃结果
@@ -79,8 +87,10 @@ class PromptBuilder:
             "client_info": client_info,
             "dpdk_info": dpdk_info,
             "core_info": core_info,
+            "description": description,
             "log_feature": log_feature,
             "similar_cases": similar_cases,
+            "knowledge_cases": knowledge_cases,
             "few_shots": self._get_few_shots("crash_examples"),
         }
         return self._build(
@@ -94,10 +104,12 @@ class PromptBuilder:
         *,
         client_info,
         dpdk_info,
+        description,
         log_feature,
         anomaly_flags,
         reference_feature,
         similar_cases,
+        knowledge_cases,
     ):
         """
         构建故障根因分析 prompt - 恶化结果
@@ -109,9 +121,11 @@ class PromptBuilder:
             "client_info": client_info,
             "dpdk_info": dpdk_info,
             "anomaly_flags": anomaly_flags,
+            "description": description,
             "reference_feature": reference_feature,
             "log_feature": log_feature,
             "similar_cases": similar_cases,
+            "knowledge_cases": knowledge_cases,
             "few_shots": self._get_few_shots("crash_examples"),
         }
         return self._build(

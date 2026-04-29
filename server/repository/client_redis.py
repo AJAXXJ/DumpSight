@@ -124,3 +124,24 @@ def get_client_running_instances(client_id):
             continue
 
     return sorted(result, key=lambda x: x.get("start_time", 0))
+
+
+def get_dpdk_instances_by_client(client_id):
+    """
+    Get all DPDK instances for a specific client.
+    """
+    kv = get_redis_util_no_config().scan_with_values(f"{client_id}:info:*")
+
+    result = []
+
+    for data in kv.values():
+        try:
+            monitor_info = json.loads(data)
+
+            result.append(monitor_info)
+
+        except json.JSONDecodeError:
+            logger.error("Failed to decode monitor info JSON")
+            continue
+
+    return sorted(result, key=lambda x: x.get("start_time", 0))

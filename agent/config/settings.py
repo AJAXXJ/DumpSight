@@ -86,6 +86,13 @@ class Settings:
         self.log_level = log.get("level", "INFO")
         self.log_json = log.get("json", False)
 
+        # Elasticsearch
+        es = cfg.get("elasticsearch", {})
+        self.es_host = es.get("host", "http://localhost:9200")
+        self.es_user = es.get("user", None)
+        self.es_password = es.get("password", None)
+        self.es_index = es.get("index", "dumpsight_cases")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

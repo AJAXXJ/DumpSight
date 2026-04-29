@@ -1,7 +1,10 @@
 import re
 from typing import Optional, TypedDict
-from monitor.coredump_extractor.tools.parse_call_chain import parse_call_chain, to_llm_input
-from tools.constant import IDLE_FRAMES, SUBSYSTEMS, KEY_REGISTER
+from monitor.coredump_extractor.tools.parse_call_chain import (
+    parse_call_chain,
+    to_llm_input,
+)
+from tools.constant import IDLE_FRAMES, SIGNAL_MAP, SUBSYSTEMS, KEY_REGISTER
 
 
 class SignalInfo(TypedDict):
@@ -79,9 +82,7 @@ _RE_MAPPING = re.compile(
     r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+0x[0-9a-f]+\s+0x[0-9a-f]+\s*(.*?)$",
     re.MULTILINE,
 )
-_RE_SHARED_LIB = re.compile(
-    r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+(Yes|No)\s+(.+\.so\S*)"
-)
+_RE_SHARED_LIB = re.compile(r"(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+(Yes|No)\s+(.+\.so\S*)")
 _RE_HEX = re.compile(r"0x[0-9a-f]+")
 
 # section 分隔符模板（动态构造，避免重复 re.escape）
@@ -103,12 +104,23 @@ def _norm_text(s: str) -> str:
 
 
 # 将 IDLE_FRAMES 常量与内置关键字合并为归一化 token 集合
-_IDLE_TOKENS: frozenset[str] = frozenset(filter(None, (
-    _norm_text(x) for x in IDLE_FRAMES
-))) | frozenset({
-    "read", "libcread", "epollwait", "pthreadcondwait",
-    "pthreadcondtimedwait", "futexwait", "nanosleep", "clocknanosleep",
-})
+_IDLE_TOKENS: frozenset[str] = frozenset(
+    filter(None, (_norm_text(x) for x in IDLE_FRAMES))
+) | frozenset(
+    {
+        "read",
+        "libcread",
+        "epollwait",
+        "pthreadcondwait",
+        "pthreadcondtimedwait",
+        "futexwait",
+        "nanosleep",
+        "clocknanosleep",
+        "socketlistener",  # librte_telemetry 后台线程
+        "mphandle",  # librte_eal 多进程消息处理线程
+        "libcaccept",  # accept 阻塞（telemetry socket）
+    }
+)
 
 # KEY_REGISTER 集合化，O(1) 查询
 _KEY_REGISTER_SET: frozenset[str] = frozenset(KEY_REGISTER)
@@ -137,11 +149,12 @@ def _classify_sigsegv(registers: dict[str, str]) -> str:
 
 _SIGNAL_CLASSIFIERS: dict[str, object] = {
     "SIGSEGV": _classify_sigsegv,
-    "SIGBUS":  lambda _: "bus_error_alignment",
+    "SIGBUS": lambda _: "bus_error_alignment",
     "SIGABRT": lambda _: "abort",
-    "SIGFPE":  lambda _: "floating_point_exception",
-    "SIGILL":  lambda _: "illegal_instruction",
+    "SIGFPE": lambda _: "floating_point_exception",
+    "SIGILL": lambda _: "illegal_instruction",
     "SIGPIPE": lambda _: "broken_pipe",
+    "SIGTERM": lambda _: "terminated",  # ← 新增
 }
 
 
@@ -165,28 +178,37 @@ def get_section(output: str, begin: str, end: str) -> str:
 def _extract_all_sections(output: str) -> dict[str, str]:
     """预提取所有 section，避免重复正则搜索。"""
     pairs = [
-        ("bt_full",     "=== BT_FULL_BEGIN ===",     "=== BT_FULL_END ==="),
-        ("info_threads","=== INFO_THREADS_BEGIN ===", "=== INFO_THREADS_END ==="),
-        ("registers",   "=== REGISTERS_BEGIN ===",   "=== REGISTERS_END ==="),
-        ("mappings",    "=== MAPPINGS_BEGIN ===",     "=== MAPPINGS_END ==="),
-        ("shared",      "=== SHARED_BEGIN ===",       "=== SHARED_END ==="),
-        ("thread_bt",   "=== THREAD_BT_BEGIN ===",    "=== THREAD_BT_END ==="),
-        ("rsp",         "=== RSP_BEGIN ===",           "=== RSP_END ==="),
-        ("rbp",         "=== RBP_BEGIN ===",           "=== RBP_END ==="),
-        ("args",        "=== ARGS_BEGIN ===",          "=== ARGS_END ==="),
+        ("bt_full", "=== BT_FULL_BEGIN ===", "=== BT_FULL_END ==="),
+        ("info_threads", "=== INFO_THREADS_BEGIN ===", "=== INFO_THREADS_END ==="),
+        ("registers", "=== REGISTERS_BEGIN ===", "=== REGISTERS_END ==="),
+        ("mappings", "=== MAPPINGS_BEGIN ===", "=== MAPPINGS_END ==="),
+        ("shared", "=== SHARED_BEGIN ===", "=== SHARED_END ==="),
+        ("thread_bt", "=== THREAD_BT_BEGIN ===", "=== THREAD_BT_END ==="),
+        ("rsp", "=== RSP_BEGIN ===", "=== RSP_END ==="),
+        ("rbp", "=== RBP_BEGIN ===", "=== RBP_END ==="),
+        ("args", "=== ARGS_BEGIN ===", "=== ARGS_END ==="),
     ]
     return {key: get_section(output, begin, end) for key, begin, end in pairs}
 
 
 def extract_signal(output: str) -> Optional[SignalInfo]:
-    """提取信号信息。"""
+    """提取信号信息，数字信号值自动转换为名称。"""
     m = _RE_SIGNAL.search(output)
-    if m:
-        return {
-            "name":        m.group(1).strip(),
-            "description": (m.group(2) or "").strip(),
-        }
-    return None
+    if not m:
+        return None
+
+    raw_name = m.group(1).strip()
+
+    # 数字信号值 → 名称（查 SIGNAL_MAP）
+    if raw_name.isdigit():
+        signal_name = SIGNAL_MAP.get(int(raw_name), f"SIG_{raw_name}")
+    else:
+        signal_name = raw_name
+
+    return {
+        "name": signal_name,
+        "description": (m.group(2) or "").strip(),
+    }
 
 
 def extract_crash_frame(bt_full_section: str) -> Optional[CrashFrame]:
@@ -195,10 +217,13 @@ def extract_crash_frame(bt_full_section: str) -> Optional[CrashFrame]:
         return None
     m = _RE_CRASH_FRAME.search(bt_full_section)
     if m:
+        func = m.group(1).strip()
+        if func in ("??", ""):
+            return None
         return {
-            "function":      m.group(1).strip(),
-            "file":          m.group(2),
-            "line":          m.group(3),
+            "function": m.group(1).strip(),
+            "file": m.group(2),
+            "line": m.group(3),
             "has_debuginfo": m.group(2) is not None,
         }
     return None
@@ -247,10 +272,10 @@ def extract_threads(info_threads_section: str) -> ThreadSummary:
 
     idle = total - len(abnormal_threads) - (1 if crashed_thread else 0)
     return {
-        "total":    total,
-        "crashed":  crashed_thread,
+        "total": total,
+        "crashed": crashed_thread,
         "abnormal": abnormal_threads,
-        "idle":     max(idle, 0),   # 防止负数
+        "idle": max(idle, 0),  # 防止负数
     }
 
 
@@ -287,16 +312,16 @@ def extract_crash_address_type(
     for m in _RE_MAPPING.finditer(mappings_section):
         try:
             start = int(m.group(1), 16)
-            end   = int(m.group(2), 16)
+            end = int(m.group(2), 16)
         except ValueError:
             continue
         name = m.group(3).strip()
         if start <= addr < end:
             return {
                 "region": name or "anonymous",
-                "start":  m.group(1),
-                "end":    m.group(2),
-                "type":   _classify_region(name),
+                "start": m.group(1),
+                "end": m.group(2),
+                "type": _classify_region(name),
             }
     return None
 
@@ -346,12 +371,15 @@ def _parse_thread_blocks(section: str) -> dict[str, list[str]]:
 
 
 def _filter_idle_threads(raw: dict[str, list[str]]) -> dict[str, list[str]]:
-    """过滤掉 idle 线程，仅保留有实际活动的线程。"""
-    return {
-        tid: frames
-        for tid, frames in raw.items()
-        if frames and not _is_idle_frame_text(frames[0])
-    }
+    result = {}
+    for tid, frames in raw.items():
+        if not frames:
+            continue
+        # 检查所有帧，任意一帧命中 idle token 就过滤整个线程
+        if any(_is_idle_frame_text(f) for f in frames):
+            continue
+        result[tid] = frames
+    return result
 
 
 def extract_stack_memory(
@@ -374,7 +402,6 @@ DPDK_LIB_KEYWORDS = [
     "librte_ethdev",
     "librte_net",
     "librte_ring",
-    "librte_malloc",
 ]
 
 
@@ -386,7 +413,7 @@ def extract_dpdk_lib_status(shared_section: str):
         return {
             "dpdk_lib_missing": True,
             "found_libs": [],
-            "missing_libs": DPDK_LIB_KEYWORDS
+            "missing_libs": DPDK_LIB_KEYWORDS,
         }
 
     found = set()
@@ -400,7 +427,7 @@ def extract_dpdk_lib_status(shared_section: str):
     return {
         "dpdk_lib_missing": len(missing) > 0,
         "found_libs": list(found),
-        "missing_libs": missing
+        "missing_libs": missing,
     }
 
 
@@ -435,7 +462,6 @@ def _classify_region(name: str) -> str:
 
 
 def _collect_warnings(result: dict) -> list[str]:
-    """收集解析过程中的异常情况，便于下游判断结果可信度。"""
     warnings: list[str] = []
     if not result.get("signal"):
         warnings.append("signal section missing or unparseable")
@@ -446,52 +472,70 @@ def _collect_warnings(result: dict) -> list[str]:
         warnings.append("backtrace is empty")
     elif len(bt) < 3:
         warnings.append(f"backtrace only has {len(bt)} frame(s), may be truncated")
+        # 有源文件位置说明符号正常，不是截断，只是调用链本身就短
+        has_source = crash_frame and crash_frame.get("has_debuginfo")
+        if not has_source:
+            result["suggest_rerun_with_debuginfo"] = True
     threads = result.get("threads", {})
     if threads.get("total", 0) == 0:
         warnings.append("no threads parsed from info_threads section")
     if not result.get("crash_frame"):
         warnings.append("crash frame (#0) not found in bt_full section")
+
+    shared = result.get("shared_libs", {})
+    if isinstance(shared, dict) and shared.get("dpdk_lib_missing"):
+        missing = shared.get("missing_libs", [])
+        warnings.append(f"DPDK shared libs missing: {missing}")
+
     return warnings
 
 
 def parse_gdb_output(output: str) -> GdbParseResult:
     """解析完整 GDB 输出，返回结构化崩溃信息。"""
-    signal   = extract_signal(output)
+    signal = extract_signal(output)
     sections = _extract_all_sections(output)
     registers = extract_registers(sections["registers"])
 
-    backtrace = extract_backtrace(sections["bt_full"], max_frames=10),
+    backtrace = extract_backtrace(sections["bt_full"], max_frames=10)
     thread_bt = extract_all_threads_bt(sections["thread_bt"])
     crash_frame = extract_crash_frame(sections["bt_full"])
 
     call_chain_graph = parse_call_chain(backtrace, thread_bt, crash_frame)
-    call_chain_llm = to_llm_input(call_chain_graph)
+    call_chain_llm = to_llm_input(
+        call_chain_graph,
+        raw_meta={
+            "suggest_rerun_with_debuginfo": len(backtrace) < 3,
+            "signal_name": (signal or {}).get("name", "未知"),
+            "crash_address_region": (
+                extract_crash_address_type(registers, sections["mappings"]) or {}
+            ).get("region", "未知"),
+            "threads": extract_threads(sections["info_threads"]),
+        },
+        context={},  # context 在这层还没有，留空，由上层 build_core_info_for_prompt 填充
+    )
 
     result: dict = {
         # 基础崩溃信息
-        "signal":     signal,
+        "signal": signal,
         "crash_type": classify_crash(signal, registers),
-
         # 崩溃现场
-        "crash_frame":   crash_frame,
-        "backtrace":     backtrace,
-        "registers":     registers,
-        "stack_memory":  extract_stack_memory(sections["rsp"], sections["rbp"]),
-
+        "crash_frame": crash_frame,
+        "backtrace": backtrace,
+        "registers": registers,
+        "stack_memory": extract_stack_memory(sections["rsp"], sections["rbp"]),
         # 线程
-        "threads":    extract_threads(sections["info_threads"]),
+        "threads": extract_threads(sections["info_threads"]),
         "threads_bt": thread_bt,
-
         # 环境
-        "shared_libs":     extract_dpdk_lib_status(sections["shared"]),
+        "shared_libs": extract_dpdk_lib_status(sections["shared"]),
         "dpdk_subsystems": extract_dpdk_subsystem(sections["bt_full"]),
-
         # 崩溃地址类型
-        "crash_address_type": extract_crash_address_type(registers, sections["mappings"]),
-
+        "crash_address_type": extract_crash_address_type(
+            registers, sections["mappings"]
+        ),
         # call chain
         "call_chain_graph": call_chain_graph.to_dict(),
-        "call_chain_llm":   call_chain_llm,
+        "call_chain_llm": call_chain_llm,
     }
 
     result["warnings"] = _collect_warnings(result)

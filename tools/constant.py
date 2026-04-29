@@ -1,9 +1,12 @@
 # 信号值表
 SIGNAL_MAP = {
-    6: "SIGABRT",
+    4:  "SIGILL",
+    6:  "SIGABRT",
+    7:  "SIGBUS",   # 总线错误，常见于非对齐内存访问
+    8:  "SIGFPE",
     11: "SIGSEGV",
-    8: "SIGFPE",
-    4: "SIGILL"
+    13: "SIGPIPE",  # 写入已关闭的管道
+    15: "SIGTERM",  # 正常终止
 }
 
 # 正常等待状态 线程直接跳过不记录

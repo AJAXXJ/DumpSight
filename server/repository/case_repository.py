@@ -50,8 +50,10 @@ def get_case(case_id):
     case = CaseInfo.get(case_id=case_id)
     return case if case else None
 
+
 def get_all_case():
     return CaseInfo.all()
+
 
 def get_case_batch(case_ids):
     if not case_ids:
@@ -60,8 +62,8 @@ def get_case_batch(case_ids):
     return CaseInfo.in_filter("case_id", case_ids)
 
 
-def page_case(page_num, page_size):
-    return CaseInfo.page(page_num, page_size)
+def page_case(page_index, page_size):
+    return CaseInfo.page(page_index, page_size)
 
 
 def filter_case(crash_type=None, signal_name=None):

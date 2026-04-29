@@ -18,6 +18,7 @@ from server.repository.core_repository import (
     get_core_page,
 )
 from server.tools.metrics_timeseries_collector import process_and_get_timeseries
+from tools.minio_util import get_minio_util
 
 
 def dashboard_report_list_service(page_index, page_size):
@@ -62,15 +63,15 @@ def dashboard_report_list_service(page_index, page_size):
     }
 
 
-def dashboard_raw_json_service(request_json):
+def dashboard_raw_json_service(search_dict):
     """
     前端获取原始 json 数据
     """
-    names = request_json.get("names")
+    names = search_dict.get("names")
 
-    client_id = request_json.get("client_id")
-    pid = request_json.get("pid")
-    timestamp = request_json.get("timestamp")
+    client_id = search_dict.get("client_id")
+    pid = search_dict.get("pid")
+    timestamp = search_dict.get("timestamp")
 
     core_info = get_core_info(client_id, pid, timestamp)
 
@@ -233,3 +234,5 @@ def dashboard_statics_service():
         "core_nums": core_nums,
         "case_nums": case_nums,
     }
+
+

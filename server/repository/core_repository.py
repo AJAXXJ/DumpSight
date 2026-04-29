@@ -9,6 +9,7 @@ def add_core_info(
     process_time=None,
     analyse_time=None,
     total_time=None,
+    state=None
 ):
     client_info = CoreInfo.create(
         client_id=client_id,
@@ -18,7 +19,7 @@ def add_core_info(
         process_time=process_time,
         analyse_time=analyse_time,
         total_time=total_time,
-
+        state=state
     )
     return client_info["id"]
 

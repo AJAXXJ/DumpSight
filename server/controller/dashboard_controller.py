@@ -9,11 +9,13 @@ from server.service.dashboard_service import (
     dashboard_raw_json_service,
     dashboard_render_report_service,
     dashboard_report_list_service,
-    dashboard_statics_service
+    dashboard_statics_service,
 )
 from server.tools.api_response import ApiResponse
+from tools.minio_util import get_minio_util
 
 dashboard_bp = Blueprint("dashboard", __name__)
+
 
 @dashboard_bp.route("/report_list", methods=["GET"])
 def dashboard_report_list():
@@ -59,7 +61,7 @@ def dashboard_client_list():
 
     except Exception as e:
         return ApiResponse.error(str(e))
-    
+
 
 @dashboard_bp.route("/instance_list", methods=["GET"])
 def dashboard_instance_list():
@@ -71,6 +73,7 @@ def dashboard_instance_list():
 
     except Exception as e:
         return ApiResponse.error(str(e))
+
 
 @dashboard_bp.route("/client_info", methods=["GET"])
 def dashboard_client_info():
@@ -123,3 +126,5 @@ def dashboard_statics():
 
     except Exception as e:
         return ApiResponse.error(str(e))
+
+

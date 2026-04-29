@@ -67,9 +67,11 @@ def monitor_core(config):
                 core_extractor_result = run_core_extractor(
                     [core_path, exe_path, log_path], output_dir
                 )
-
+                print("1")
                 meta = core_extractor_result["meta"]
+                print("2")
                 context = core_extractor_result["context"]
+                print("3")
 
                 end_time = time.time()
 

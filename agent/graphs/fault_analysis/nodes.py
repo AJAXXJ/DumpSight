@@ -21,13 +21,17 @@ from agent.tools.telemetry_feature_tool import (
     log_5s_statistic,
 )
 from agent.tools.tool_registry import get_tools
+from monitor.coredump_extractor.extractor.context_parser import (
+    build_core_info_for_prompt,
+)
+from server.service.case_service import case_insert_service, search_cases
+from server.service.knowledge_service import knowledge_search_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 _llm = get_llm()
 _builder = PromptBuilder(registry=get_registry(settings.prompt_version))
 _tools = get_tools()
-
 
 
 def node_fetch_data(state, config):
@@ -107,7 +111,6 @@ def node_fetch_data_escalation(state, config):
     }
 
 
-
 def _get_retrieve_description(state, config) -> str:
     """
     根据流程类型生成案例检索描述文本。
@@ -159,25 +162,55 @@ def _get_retrieve_description(state, config) -> str:
 
 def node_retrieve_cases(state, config):
     """
-    案例检索节点，正常流程和预警升级流程共用。
-    基于当前流程类型生成检索描述，检索历史相似案例。
-    检索失败不中断流程，降级为无历史案例模式。
+    案例和知识检索节点（正常 + 预警流程通用）
     """
-    logger.info("node_retrieve_cases | run_id=%s", state.get("run_id"))
+    run_id = state.get("run_id")
+    logger.info("node_retrieve_cases | run_id=%s", run_id)
 
+    # 生成检索描述（失败则直接降级）
+    description = ""
     try:
-        description = _get_retrieve_description(state, config)
+        description = _get_retrieve_description(state, config) or ""
         state["description"] = description
-        cases = get_retrieval().search(state=state)
     except Exception as exc:
-        logger.warning("case retrieval failed, continuing without cases | %s", exc)
-        cases = []
-        description = ""
+        logger.warning("description generation failed | %s", exc)
 
-    logger.info("retrieved %d cases | run_id=%s", len(cases), state.get("run_id"))
-    return {"retrieved_cases": cases, "description": description}
+    # 无描述直接返回空结果（避免无意义调用）
+    if not description:
+        logger.info("empty description, skip retrieval | run_id=%s", run_id)
+        return {
+            "retrieved_cases": [],
+            "knowledge_cases": [],
+            "description": "",
+        }
 
+    # 统一安全调用函数（减少重复 try/except）
+    def safe_call(fn, default, err_msg):
+        try:
+            return fn()
+        except Exception as exc:
+            logger.warning("%s | %s", err_msg, exc)
+            return default
 
+    # 案例检索
+    retrieved_cases = safe_call(
+        lambda: get_retrieval().search(state=state), [], "case retrieval failed"
+    )
+
+    # 知识检索
+    knowledge_cases = safe_call(
+        lambda: knowledge_search_service(description), [], "knowledge retrieval failed"
+    )
+
+    # 日志汇总
+    logger.info("retrieved %d cases | run_id=%s", len(retrieved_cases), run_id)
+    logger.info("retrieved %d knowledge | run_id=%s", len(knowledge_cases), run_id)
+
+    return {
+        "retrieved_cases": retrieved_cases,
+        "knowledge_cases": knowledge_cases,
+        "description": description,
+    }
 
 
 def node_root_cause_reasoning(state, config):
@@ -191,12 +224,21 @@ def node_root_cause_reasoning(state, config):
     statistic_5s = log_5s_statistic(state["metrics_5s"])
     log_feature = build_llm_features(statistic_1s, statistic_5s, state["metrics_1s"])
 
+    parsed_meta = state["core_info"]["meta"]  # parse_gdb_output 的输出
+    context = state["core_info"]["context"]  # parse_gdb_context 的输出
+    core_info_for_prompt = build_core_info_for_prompt(
+        call_chain_llm=parsed_meta["parsed_gdb_output"]["call_chain_llm"],
+        raw_meta=parsed_meta,
+        context=context,
+    )
     messages, meta = _builder.build_core_fault_analysis(
         client_info=state["client_info"],
         dpdk_info=state["dpdk_info"],
-        core_info=state["core_info"],
+        core_info=core_info_for_prompt,
+        description=state.get("description", ""),
         log_feature=log_feature,
         similar_cases=state.get("retrieved_cases", []),
+        knowledge_cases=state.get("knowledge_cases", []),
     )
 
     try:
@@ -236,10 +278,12 @@ def node_root_cause_reasoning_escalation(state, config):
     messages, meta = _builder.build_escalation_fault_analysis(
         client_info=state["client_info"],
         dpdk_info=state["dpdk_info"],
+        description=state.get("description", ""),
         log_feature=log_feature,
         anomaly_flags=state.get("anomaly_flags", []),
         reference_feature=state.get("reference_feature", {}),
         similar_cases=state.get("retrieved_cases", []),
+        knowledge_cases=state.get("knowledge_cases", []),
     )
 
     try:
@@ -264,7 +308,6 @@ def node_root_cause_reasoning_escalation(state, config):
         "prompt_meta": meta.as_log_dict(),
         "error": "",
     }
-
 
 
 def node_repair_suggestion(state, config):
@@ -358,7 +401,7 @@ def node_generate_report(state, config):
                 }
             )
 
-        get_retrieval().add_case(case_doc)
+        case_insert_service(case_doc)
 
     return {"report": report, "error": ""}
 

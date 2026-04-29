@@ -188,6 +188,8 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
     lines = [
         "## 崩溃信息报告",
         "",
+        f"> {state['description']}" if state['description'] else "",
+        "",
         f"**崩溃函数**: `{crash_function}`",
         "",
         "**主线程堆栈**:",
@@ -200,6 +202,8 @@ def _md_crash_stack(state: DPDKDiagnosisState) -> str:
         call_chain,
         "```",
     ]
+
+    
     return "\n".join(lines)
 
 
@@ -327,94 +331,107 @@ def _md_repair_steps(state: DPDKDiagnosisState) -> str:
 
 def _md_log_feature(state: DPDKDiagnosisState) -> str:
     log_feature = state.get("log_feature")
-
     if not log_feature:
         return "## 日志解析\n\n_暂无日志解析。_"
 
-    md = ["## 日志解析\n"]
-
-    # 系统状态
     sys = log_feature.get("system_status", {})
-    md.append("### 🖥 系统状态")
-    md.append(f"- 存活状态: {'正常' if sys.get('is_alive') else '异常'}")
-
-    # 时间窗口
     window = log_feature.get("window", {})
-    md.append("\n### ⏱ 时间窗口")
-    md.append(f"- 1s窗口: {window.get('1s'):.2f}s")
-    md.append(f"- 5s窗口: {window.get('5s'):.2f}s")
-
-    # 流量
     traffic = log_feature.get("traffic", {})
-    md.append("\n### 🚦 流量分析")
-    md.append(f"- RX PPS: {traffic.get('rx_pps'):.2f}")
-    md.append(f"- TX PPS: {traffic.get('tx_pps'):.2f}")
-    md.append(f"- 流量等级: {traffic.get('traffic_level')}")
-    md.append(f"- 趋势: {traffic.get('trend')}")
-    md.append(f"- 短期趋势: {traffic.get('short_trend')}")
-    md.append(f"- 稳定性: {traffic.get('stability')}")
-    md.append(f"- 包类型: {traffic.get('packet_type')}")
-
-    # 队列
     queue = log_feature.get("queue", {})
-    md.append("\n### 📦 队列状态")
-    md.append(f"- 不均衡比例: {queue.get('imbalance_ratio'):.4f}")
-    md.append(f"- 状态: {queue.get('status')}")
-
-    # 内存池
     mem = log_feature.get("mempool", {})
-    md.append("\n### 🧠 Mempool")
-    md.append(f"- 空闲率: {mem.get('free_ratio'):.4f}")
-    md.append(f"- 状态: {mem.get('status')}")
-    md.append(f"- 趋势: {mem.get('trend')}")
-
-    # Heap
     heap = log_feature.get("heap", {})
-    md.append("\n### 🪵 Heap 内存")
-    md.append(f"- 空闲率: {heap.get('free_ratio'):.4f}")
-    md.append(f"- 碎片率: {heap.get('fragmentation'):.4f}")
-    md.append(f"- 状态: {heap.get('status')}")
-
-    # CPU
     cpu = log_feature.get("cpu", {})
-    md.append("\n### 🧮 CPU")
-    md.append(f"- 平均使用率: {cpu.get('avg_usage'):.2f}")
-    md.append(f"- 状态: {cpu.get('status')}")
-    md.append(f"- 趋势: {cpu.get('trend')}")
-    md.append(f"- 热核: {cpu.get('hot_lcore')}")
-
-    # 错误
     err = log_feature.get("errors", {})
-    md.append("\n### ⚠️ 错误统计")
-    md.append(f"- RX错误: {err.get('rx_errors')}")
-    md.append(f"- TX错误: {err.get('tx_errors')}")
-    md.append(f"- NoMBUF: {err.get('nombuf')}")
-    md.append(f"- Missed: {err.get('missed')}")
-    md.append(f"- 严重程度: {err.get('severity')}")
-
-    # 风险
-    md.append("\n### 🚨 风险评估")
-    md.append(f"- 风险等级: {log_feature.get('risk_level')}")
-    md.append(f"- 风险分数: {log_feature.get('risk_score')}")
-    md.append(f"- 风险项: {', '.join(log_feature.get('risk', []))}")
-
     risk_breakdown = log_feature.get("risk_breakdown", {})
-    if risk_breakdown:
-        md.append("- 风险拆解:")
-        for k, v in risk_breakdown.items():
-            md.append(f"  - {k}: {v}")
-
-    # 洞察
     insights = log_feature.get("insight", [])
-    md.append("\n### 💡 系统洞察")
+
+    lines = [
+        "## 日志解析\n",
+        "| 维度 | 指标 | 值 |",
+        "|------|------|----|",
+        f"| 系统 | 存活状态 | {'正常' if sys.get('is_alive') else '异常'} |",
+        f"| 时间窗口 | 1s / 5s | {window.get('1s', 0):.2f}s / {window.get('5s', 0):.2f}s |",
+        f"| 流量 | RX/TX PPS | {traffic.get('rx_pps', 0):.2f} / {traffic.get('tx_pps', 0):.2f} |",
+        f"| 流量 | 等级/趋势/稳定性 | {traffic.get('traffic_level')} / {traffic.get('trend')} / {traffic.get('stability')} |",
+        f"| 队列 | 不均衡比例 / 状态 | {queue.get('imbalance_ratio', 0):.4f} / {queue.get('status')} |",
+        f"| Mempool | 空闲率 / 状态 / 趋势 | {mem.get('free_ratio', 0):.4f} / {mem.get('status')} / {mem.get('trend')} |",
+        f"| Heap | 空闲率 / 碎片率 / 状态 | {heap.get('free_ratio', 0):.4f} / {heap.get('fragmentation', 0):.4f} / {heap.get('status')} |",
+        f"| CPU | 均值 / 状态 / 趋势 / 热核 | {cpu.get('avg_usage', 0):.2f} / {cpu.get('status')} / {cpu.get('trend')} / {cpu.get('hot_lcore')} |",
+        f"| 错误 | RX/TX/NoMBUF/Missed | {err.get('rx_errors')} / {err.get('tx_errors')} / {err.get('nombuf')} / {err.get('missed')} |",
+        f"| 风险 | 等级 / 分数 | {log_feature.get('risk_level')} / {log_feature.get('risk_score')} |",
+    ]
+
+    if risk_breakdown:
+        breakdown_str = " / ".join(f"{k}:{v}" for k, v in risk_breakdown.items())
+        lines.append(f"| 风险拆解 | - | {breakdown_str} |")
+
+    risk_tags = log_feature.get("risk", [])
+    if risk_tags:
+        lines.append(f"| 风险标签 | - | {', '.join(risk_tags)} |")
 
     if insights:
-        for i in insights:
-            md.append(f"- {i}")
-    else:
-        md.append("- 无异常洞察")
+        lines.append("\n**系统洞察**\n")
+        lines.extend(f"- {i}" for i in insights)
 
-    return "\n".join(md)
+    return "\n".join(lines)
+
+
+def _md_escalate_result(state: DPDKDiagnosisState) -> str:
+    result = state.get("escalate_result") or {}
+    alert = result.get("alert") or {}
+    log_feature = result.get("log_feature") or {}
+
+    severity = alert.get("severity", "unknown")
+    title = alert.get("title", "")
+    description = alert.get("description", "")
+    triggered_at = alert.get("triggered_at")
+    triggered_str = (
+        datetime.fromtimestamp(triggered_at).strftime("%Y-%m-%d %H:%M:%S")
+        if triggered_at else ""
+    )
+
+    rule_flags = result.get("rule_flags") or []
+    semantic_flags = result.get("semantic_flags") or []
+    risk_score = log_feature.get("risk_score", 0)
+    risk_level = log_feature.get("risk_level", "unknown")
+    risk_breakdown = log_feature.get("risk_breakdown") or {}
+    insight = log_feature.get("insight") or []
+    risk_tags = log_feature.get("risk") or []
+
+    lines = ["## 预警升级信息\n"]
+
+    lines += [
+        "| 字段 | 值 |",
+        "|------|----|",
+        f"| 告警等级 | `{severity.upper()}` |",
+    ]
+    if title:
+        lines.append(f"| 标题 | {title} |")
+    if triggered_str:
+        lines.append(f"| 触发时间 | {triggered_str} |")
+    lines += [
+        f"| 风险评分 | {risk_score} / 100 |",
+        f"| 风险等级 | `{risk_level}` |",
+    ]
+
+    if risk_breakdown:
+        lines.append(f"| 风险明细 | {' / '.join(f'{k}:{v}' for k, v in risk_breakdown.items())} |")
+
+    if rule_flags:
+        lines.append(f"| 规则触发 | {', '.join(f'`{f}`' for f in rule_flags)} |")
+    if semantic_flags:
+        lines.append(f"| 语义检测 | {', '.join(f'`{f}`' for f in semantic_flags)} |")
+    if risk_tags:
+        lines.append(f"| 风险标签 | {', '.join(f'`{t}`' for t in risk_tags)} |")
+
+    if insight:
+        lines.append("\n**系统洞察**\n")
+        lines.extend(f"- {i}" for i in insight)
+
+    if description:
+        lines.append(f"\n**告警详情**\n\n{description}")
+
+    return "\n".join(lines)
 
 
 def _md_similar_cases(state: DPDKDiagnosisState) -> str:
@@ -427,7 +444,7 @@ def _md_similar_cases(state: DPDKDiagnosisState) -> str:
         f"| `{c.get('description','?')}` "
         f"| {c.get('root_cause','')[:60]} "
         f"| {c.get('score', 0):.2f} "
-        f"| {'；'.join(c.get('repair_steps', []))[:60]} |"
+        f"| {'；'.join(c.get('repair_steps') or [])[:60]} |"
         for c in cases
     )
     return (

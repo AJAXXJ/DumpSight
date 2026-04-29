@@ -37,14 +37,20 @@ def build_realtime_monitor_graph():
                                                                     ↓
                                                             risk_assessment
                                                               ├─(escalate)─→ escalate_to_fault → END
-                                                              ├─(alert)────→ alert_generation
-                                                              │               ├─(escalate)─→ escalate_to_fault → END
-                                                              │               └─(ok)───────→ END
+                                                              ├─(alert)────→ alert_generation → END
                                                               └─(冷却/无需)→ END
+
+    escalate_to_fault 分支已在 edge_after_risk 处提前路由，
+    alert_generation 永远不会在 escalate_to_fault=True 时被执行。
+    因此 edge_after_alert 的 escalate 死分支已移除，
+    add_conditional_edges 改为 add_edge。
+
+    当前保持禁用状态（调试阶段），同时移除 run_fast/slow_poll 中
+    无意义的 thread_id 传参。启用 checkpointer 时需同步评估
+    _reset_state 的重置逻辑是否与持久化 State 兼容。
     """
     b = StateGraph(DPDKDiagnosisState)
 
-    # 节点注册
     b.add_node("fetch_metrics", node_fetch_metrics)
     b.add_node("rule_detection", node_rule_detection)
     b.add_node("semantic_detection", node_semantic_detection)
@@ -57,6 +63,7 @@ def build_realtime_monitor_graph():
     b.add_edge(START, "fetch_metrics")
     b.add_edge("escalate_to_fault", END)
     b.add_edge("handle_error", END)
+    b.add_edge("alert_generation", END)
 
     # 条件边
     b.add_conditional_edges(
@@ -92,13 +99,7 @@ def build_realtime_monitor_graph():
             "end": END,
         },
     )
-    b.add_conditional_edges(
-        "alert_generation",
-        edge_after_alert,
-        {"escalate_to_fault": "escalate_to_fault", "end": END},
-    )
 
-    # TODO: 调试阶段禁用 checkpointer
     return b.compile(checkpointer=None)
 
 
@@ -113,8 +114,7 @@ def get_realtime_monitor_graph():
     return _graph
 
 
-
-def run_fast_poll(client_id: str, pid: int, thread_id: str = None) -> dict:
+def run_fast_poll(client_id: str, pid: int) -> dict:
     """
     快速轮询（建议 10s 调用一次）：
     只执行规则引擎，不触发 LLM，延迟可控在秒级。
@@ -125,13 +125,12 @@ def run_fast_poll(client_id: str, pid: int, thread_id: str = None) -> dict:
         {
             "client_id": client_id,
             "pid": pid,
-            "allow_semantic": False,  # 禁用语义检测
+            "allow_semantic": False,
         },
-        config={"configurable": {"thread_id": thread_id or f"{client_id}:{pid}:fast"}},
     )
 
 
-def run_slow_poll(client_id: str, pid: int, thread_id: str = None) -> dict:
+def run_slow_poll(client_id: str, pid: int) -> dict:
     """
     慢速轮询（建议 60s 调用一次）：
     规则引擎无异常时继续触发 LLM 语义检测，捕捉规则盲区。
@@ -141,7 +140,6 @@ def run_slow_poll(client_id: str, pid: int, thread_id: str = None) -> dict:
         {
             "client_id": client_id,
             "pid": pid,
-            "allow_semantic": True,  # 允许语义检测
+            "allow_semantic": True,
         },
-        config={"configurable": {"thread_id": thread_id or f"{client_id}:{pid}:slow"}},
     )
