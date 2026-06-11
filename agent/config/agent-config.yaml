@@ -7,7 +7,7 @@ llm:
   max_retries: 3
 
 api_keys:
-  openai_api_key: "sk-635395661b8244079ad92fceff508526"
+  openai_api_key: 
   openai_api_base: "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 vector_store:
@@ -52,7 +52,7 @@ log:
 
 
 elasticsearch:
-  host: "http://192.168.122.1:9200"
+  host: 
   user: null
   password: null
-  index: "dumpsight_cases"
+  index: 
