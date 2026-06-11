@@ -10,6 +10,7 @@ class SymbolStatus(str, Enum):
     DEGRADED = "degraded"
     UNKNOWN = "unknown"
 
+
 @dataclass(frozen=True)
 class MismatchPattern:
     """
@@ -18,9 +19,6 @@ class MismatchPattern:
     匹配逻辑（AND）：
       1. substrings  — 所有子串必须出现在 err 中
       2. pattern     — 正则匹配（可选）
-
-    category：
-      用于结构化诊断聚合（binary/debug/symbol/...）
     """
 
     key: str
@@ -76,10 +74,6 @@ class MismatchPattern:
             self.pattern is None or bool(self.pattern.search(err))
         )
 
-
-# ---------------------------------------------------------------------------
-# 按 category 分组定义，便于独立维护和测试
-# ---------------------------------------------------------------------------
 
 _BINARY_PATTERNS: list[MismatchPattern] = [
     MismatchPattern(
@@ -144,7 +138,6 @@ _SYMBOL_PATTERNS: list[MismatchPattern] = [
 ]
 
 _DEBUG_INFO_PATTERNS: list[MismatchPattern] = [
-    # debug_info_missing 有两条规则覆盖不同措辞，共用同一 key 是有意为之
     MismatchPattern.from_strings(
         key="debug_info_missing",
         category="debug_info",
@@ -157,7 +150,6 @@ _DEBUG_INFO_PATTERNS: list[MismatchPattern] = [
         severity="non_fatal",
         regex=r"(missing|not found).*(debuginfo|debug.info|debug.symbol)",
     ),
-    # symbol_table_missing 同上，两条规则覆盖不同 GDB 输出格式
     MismatchPattern(
         key="symbol_table_missing",
         category="debug_info",
@@ -249,33 +241,46 @@ _MISMATCH_PATTERNS: list[MismatchPattern] = [
 ]
 
 
+class SymbolQualityAssessor:
+    """
+    根据 GDB returncode 和 stderr 评估符号解析质量。
+    """
+
+    def __init__(self, patterns: list[MismatchPattern] = _MISMATCH_PATTERNS) -> None:
+        self._patterns = patterns
+
+    def assess(
+        self,
+        returncode: int | None,
+        stderr: str | None,
+    ) -> tuple[SymbolStatus, list[str]]:
+        err = (stderr or "").lower().strip()
+        triggered = [p for p in self._patterns if p.matches(err)]
+
+        # 去重，保持首次命中顺序
+        warnings: list[str] = list(dict.fromkeys(p.key for p in triggered))
+
+        if any(p.severity == "fatal" for p in triggered):
+            return SymbolStatus.INVALID, warnings
+        if triggered:
+            return SymbolStatus.DEGRADED, warnings
+        if returncode is None:
+            warnings.append("gdb_returncode_unknown")
+            return SymbolStatus.UNKNOWN, warnings
+        if returncode != 0:
+            warnings.append(f"gdb_returncode_{returncode}")
+            return SymbolStatus.DEGRADED, warnings
+
+        return SymbolStatus.VALID, warnings
+
+
+# ── Backward-compatible free function ─────────────────────────────────────
+
+_default_assessor = SymbolQualityAssessor()
+
+
 def assess_symbol_status(
     returncode: int | None,
     stderr: str | None,
 ) -> tuple[SymbolStatus, list[str]]:
-    err = (stderr or "").lower().strip()
-
-    triggered = [p for p in _MISMATCH_PATTERNS if p.matches(err)]
-
-    # 去重，保持首次命中顺序（同一 key 多条规则只记录一次）
-    warnings: list[str] = list(dict.fromkeys(p.key for p in triggered))
-
-    # fatal → invalid
-    if any(p.severity == "fatal" for p in triggered):
-        return SymbolStatus.INVALID, warnings
-
-    # non-fatal pattern hit → degraded
-    if triggered:
-        return SymbolStatus.DEGRADED, warnings
-
-    # gdb returncode unknown → unknown
-    if returncode is None:
-        warnings.append("gdb_returncode_unknown")
-        return SymbolStatus.UNKNOWN, warnings
-
-    # gdb execution error → degraded
-    if returncode != 0:
-        warnings.append(f"gdb_returncode_{returncode}")
-        return SymbolStatus.DEGRADED, warnings
-
-    return SymbolStatus.VALID, warnings
+    return _default_assessor.assess(returncode, stderr)

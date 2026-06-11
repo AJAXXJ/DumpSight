@@ -78,6 +78,21 @@ _GDB_COMMANDS = [
     "echo === MAPPINGS_BEGIN ===\\n",
     "info proc mappings",
     "echo === MAPPINGS_END ===\\n",
+    # Faulting address from signal info (works even with inlined macros)
+    # GDB 12+ requires the full struct path; .si_addr shorthand is not available
+    "echo === SIGINFO_BEGIN ===\\n",
+    "p $_siginfo._sifields._sigfault.si_addr",
+    "echo === SIGINFO_END ===\\n",
+    # Crash frame locals/args (only useful when debuginfo is present)
+    "echo === LOCALS_BEGIN ===\\n",
+    "frame 0",
+    "info locals",
+    "info args",
+    "echo === LOCALS_END ===\\n",
+    # Frame 0 metadata (saved regs, chain info)
+    "echo === FRAME_INFO_BEGIN ===\\n",
+    "info frame 0",
+    "echo === FRAME_INFO_END ===\\n",
 ]
 
 

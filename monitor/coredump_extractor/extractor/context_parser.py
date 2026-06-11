@@ -1,5 +1,6 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tools.constant import APP_LOG_INIT_LINES, KEY_LS_CPU, COLLECT_TIMEOUT, APP_LOG_TAIL_LINES
 from monitor.coredump_extractor.utils import safe_run, safe_read_text
@@ -25,90 +26,145 @@ _HUGEPAGE_PATHS = {
     "1G": "/sys/kernel/mm/hugepages/hugepages-1048576kB",
 }
 
-def extract_proc_info(pid, context):
+_DPDK_USERSPACE_DRIVERS = {"vfio-pci", "uio_pci_generic", "igb_uio"}
+
+_EAL_INTERNAL_FUNCS = {"mp_handle", "eal_intr_handle_events", "rte_ctrl_thread_create"}
+
+
+class SystemContextCollector:
     """
-    提取进程的上下文信息
+    采集系统运行时快照：/proc 信息、hugepage、CPU 拓扑、网卡状态、应用日志。
+    collect() 返回 context dict，不依赖外部 out-param。
     """
-    if not pid:
-        context["proc_snapshot_available"] = False
-        context["proc_info"] = "pid unavailable"
-        return
 
-    proc_dir = f"/proc/{pid}"
-    if not os.path.exists(proc_dir):
-        context["proc_snapshot_available"] = False
-        context["proc_info"] = f"/proc/{pid} not found"
-        return
+    def collect(self, pid: str | None, log_path: str | None = None) -> dict:
+        context: dict = {}
+        steps = [
+            (self._collect_proc_info, (pid,)),
+            (self._collect_hugepage, ()),
+            (self._collect_cpu_topology, ()),
+            (self._collect_nic_status, ()),
+            (self._collect_app_log, (log_path,)),
+        ]
 
-    context["proc_snapshot_available"] = True
-    context["cmdline"] = (safe_read_text(f"{proc_dir}/cmdline") or "").replace("\x00", " ")
-    context["maps"] = safe_read_text(f"{proc_dir}/maps") or ""
-    context["status"] = safe_read_text(f"{proc_dir}/status") or ""
-    context["limits"] = safe_read_text(f"{proc_dir}/limits") or ""
+        with ThreadPoolExecutor(max_workers=len(steps)) as executor:
+            futures = {executor.submit(fn, context, *args): fn.__name__ for fn, args in steps}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    context.setdefault("errors", []).append({
+                        "step":  futures[future],
+                        "type":  type(exc).__name__,
+                        "error": str(exc),
+                    })
 
+        return context
 
-def extract_dpdk_hugepage(context):
-    """
-    提取 DPDK hugepage 状态
-    """    
-    hp = {}
-    for size, base in _HUGEPAGE_PATHS.items():
-        total = safe_read_text(f"{base}/nr_hugepages")
-        free  = safe_read_text(f"{base}/free_hugepages")
-        if total is not None:
-            hp[f"hugepages_{size}"] = {
-                "total": (total or "").strip(),
-                "free":  (free  or "").strip(),
+    # ── /proc ──────────────────────────────────────────────────────────────
+
+    def _collect_proc_info(self, context: dict, pid: str | None) -> None:
+        if not pid:
+            context["proc_snapshot_available"] = False
+            context["proc_info"] = "pid unavailable"
+            return
+
+        proc_dir = f"/proc/{pid}"
+        if not os.path.exists(proc_dir):
+            context["proc_snapshot_available"] = False
+            context["proc_info"] = f"/proc/{pid} not found"
+            return
+
+        context["proc_snapshot_available"] = True
+        context["cmdline"] = (safe_read_text(f"{proc_dir}/cmdline") or "").replace("\x00", " ")
+        context["maps"] = safe_read_text(f"{proc_dir}/maps") or ""
+        context["status"] = safe_read_text(f"{proc_dir}/status") or ""
+        context["limits"] = safe_read_text(f"{proc_dir}/limits") or ""
+
+    # ── Hugepage ────────────────────────────────────────────────────────────
+
+    def _collect_hugepage(self, context: dict) -> None:
+        hp = {}
+        for size, base in _HUGEPAGE_PATHS.items():
+            total = safe_read_text(f"{base}/nr_hugepages")
+            free  = safe_read_text(f"{base}/free_hugepages")
+            if total is not None:
+                hp[f"hugepages_{size}"] = {
+                    "total": (total or "").strip(),
+                    "free":  (free  or "").strip(),
+                }
+        if hp:
+            context["hugepages"] = hp
+
+        meminfo_text = safe_read_text("/proc/meminfo")
+        if meminfo_text:
+            context["meminfo"] = {
+                parts[0].strip(): parts[1].strip()
+                for line in meminfo_text.splitlines()
+                if ":" in line
+                for parts in [line.split(":", 1)]
+                if any(k in parts[0] for k in ["HugePages", "MemFree", "MemAvailable"])
             }
-    if hp:
-        context["hugepages"] = hp
 
-    meminfo_text = safe_read_text("/proc/meminfo")
-    if meminfo_text:
-        context["meminfo"] = {
-            parts[0].strip(): parts[1].strip()
-            for line in meminfo_text.splitlines()
-            if ":" in line
-            for parts in [line.split(":", 1)]
-            if any(k in parts[0] for k in ["HugePages", "MemFree", "MemAvailable"])
-        }
+    # ── CPU topology ────────────────────────────────────────────────────────
+
+    def _collect_cpu_topology(self, context: dict) -> None:
+        r = safe_run(["lscpu"], timeout=COLLECT_TIMEOUT)
+        if r.returncode != 0:
+            context["lscpu"] = {"info": "lscpu unavailable", "stderr": (r.stderr or "").strip()}
+            return
+
+        filtered = {}
+        for line in (r.stdout or "").splitlines():
+            if ":" in line:
+                key, val = line.split(":", 1)
+                key = key.strip()
+                if key in KEY_LS_CPU:
+                    filtered[key] = val.strip()
+        context["lscpu"] = filtered
+
+    # ── NIC / DPDK binding ─────────────────────────────────────────────────
+
+    def _collect_nic_status(self, context: dict) -> None:
+        r = safe_run(["dpdk-devbind.py", "--status"], timeout=COLLECT_TIMEOUT)
+        if r.returncode != 0:
+            context["nic_status"] = {"error": "dpdk-devbind.py unavailable"}
+            return
+        context["nic_status"] = parse_nic_status(r.stdout)
+
+    # ── Application log ────────────────────────────────────────────────────
+
+    def _collect_app_log(self, context: dict, log_path: str | None) -> None:
+        if not log_path:
+            context["app_log_status"] = "no_path_provided"
+            return
+
+        text = safe_read_text(log_path)
+        if text is None:
+            context["app_log_tail"] = [f"log file not found or unreadable: {log_path}"]
+            return
+
+        lines = text.splitlines()
+        init_text = "\n".join(lines[:APP_LOG_INIT_LINES])
+        parsed = _parse_app_log_structured(init_text)
+        if parsed:
+            context["app_log_parsed"] = parsed
+
+        tail_lines = lines[-APP_LOG_TAIL_LINES:]
+        context["app_log_tail"] = tail_lines
+
+        tail_text = "\n".join(tail_lines)
+        fatal = _extract_fatal_signal(tail_text)
+        if fatal:
+            context["app_log_fatal_signal"] = fatal
 
 
-def extract_cpu_topology(context):
-    """
-    提取 CPU/NUMA 拓扑信息
-    """
-    r = safe_run(["lscpu"], timeout=COLLECT_TIMEOUT)
-    if r.returncode != 0:
-        context["lscpu"] = {"info": "lscpu unavailable", "stderr": (r.stderr or "").strip()}
-        return
-
-    filtered = {}
-    for line in (r.stdout or "").splitlines():
-        if ":" in line:
-            key, val = line.split(":", 1)
-            key = key.strip()
-            if key in KEY_LS_CPU:
-                filtered[key] = val.strip()
-
-    context["lscpu"] = filtered
+# ── Pure parsing helpers (module-level, no side effects) ──────────────────
 
 
 def parse_nic_status(raw: str) -> dict:
-    """
-    将 dpdk-devbind.py --status 的原始输出解析为结构化字典。
-    
-    返回格式：
-    {
-        "network": [{"pci": "0000:00:05.0", "desc": "Virtio network device 1000",
-                     "if": "eth0", "drv": "virtio-pci", "unused": "vfio-pci", "active": True}],
-        "baseband": [],
-        "crypto": [],
-        ...
-    }
-    """
+    """将 dpdk-devbind.py --status 的原始输出解析为结构化字典。"""
     result = {v: [] for v in dict.fromkeys(_NIC_SECTION_MAP.values())}
-
     current = None
 
     for line in raw.splitlines():
@@ -116,7 +172,6 @@ def parse_nic_status(raw: str) -> dict:
         if not line or re.match(r"^=+$", line):
             continue
 
-        # 匹配段落标题
         lower = line.lower()
         matched_section = next(
             (key for key in _NIC_SECTION_MAP if key in lower), None
@@ -125,11 +180,9 @@ def parse_nic_status(raw: str) -> dict:
             current = _NIC_SECTION_MAP[matched_section]
             continue
 
-        # 跳过 "No xxx devices detected"
         if line.lower().startswith("no ") and "detected" in line.lower():
             continue
 
-        # 解析设备行：0000:00:05.0 'desc' if=eth0 drv=xxx unused=yyy *Active*
         if current is None:
             continue
 
@@ -138,40 +191,24 @@ def parse_nic_status(raw: str) -> dict:
             continue
 
         pci, desc, rest = m.group(1), m.group(2), m.group(3)
-        dev = {
+        result[current].append({
             "pci":    pci,
             "desc":   desc,
             "if":     _kv(rest, "if"),
             "drv":    _kv(rest, "drv"),
             "unused": _kv(rest, "unused"),
             "active": "*Active*" in rest,
-        }
-        result[current].append(dev)
+        })
 
     return result
 
 
 def _kv(text: str, key: str) -> str:
-    """从 'key=value' 格式的字符串中提取 value，找不到返回空字符串。"""
     m = re.search(rf"{key}=(\S+)", text)
     return m.group(1) if m else ""
 
 
-def extract_nic_status(context):
-    """提取网卡和 PMD 状态"""
-    r = safe_run(["dpdk-devbind.py", "--status"], timeout=COLLECT_TIMEOUT)
-    if r.returncode != 0:
-        context["nic_status"] = {"error": "dpdk-devbind.py unavailable"}
-        return
-
-    context["nic_status"] = parse_nic_status(r.stdout)
-
-
 def _parse_app_log_structured(text: str) -> dict:
-    """
-    从应用日志头部提取结构化字段（仅原始提取，不做分析）。
-    调用方应传入前 APP_LOG_INIT_LINES 行拼接的文本。
-    """
     if not text:
         return {}
 
@@ -219,18 +256,14 @@ def _parse_app_log_structured(text: str) -> dict:
     }
 
     parsed = {}
-
-    # 通用模式批量匹配
     for key, (pattern, extractor) in patterns.items():
         m = re.search(pattern, text, re.MULTILINE)
         if m:
             parsed[key] = extractor(m)
 
-    # 布尔标志：共享链接检测
     if re.search(r"EAL:\s*Detected shared linkage of DPDK", text):
         parsed["shared_linkage_detected"] = True
 
-    # 多设备：收集所有 PCI 探测记录（改为列表，支持多网卡）
     pci_probes = re.findall(
         r"EAL:\s*Probe PCI driver:\s*(\S+).*?device:\s*([0-9a-fA-F:.]+)",
         text,
@@ -241,7 +274,6 @@ def _parse_app_log_structured(text: str) -> dict:
             for driver, device in pci_probes
         ]
 
-    # 驱动初始化错误：精确匹配优先，降级到宽泛匹配
     m = re.search(
         r"^([A-Za-z_][A-Za-z0-9_]*)\(\):\s*(Failed to init PCI device.*)$",
         text,
@@ -261,79 +293,13 @@ def _parse_app_log_structured(text: str) -> dict:
     return parsed
 
 
-def _extract_fatal_signal(tail_text):
-    """从日志尾部检测崩溃信号行。"""
+def _extract_fatal_signal(tail_text: str) -> str | None:
     m = re.search(
         r"^(Segmentation fault(?:\s*\(core dumped\))?)\s*$",
         tail_text,
         re.MULTILINE,
     )
     return m.group(1) if m else None
-
-
-def extract_app_log(log_path: str, context: dict) -> None:
-    """
-    读取应用日志：
-    - 前 APP_LOG_INIT_LINES 行做结构化解析（EAL 初始化字段）
-    - 后 APP_LOG_TAIL_LINES 行保留原文用于崩溃回溯
-    - 尾部单独检测崩溃信号
-    """
-    if not log_path:
-        return
-
-    text = safe_read_text(log_path)
-    if text is None:
-        context["app_log_tail"] = [f"log file not found or unreadable: {log_path}"]
-        return
-
-    lines = text.splitlines()
-
-    # 结构化解析：只扫描前 N 行，避免在大日志上全文正则
-    init_text = "\n".join(lines[:APP_LOG_INIT_LINES])
-    parsed = _parse_app_log_structured(init_text)
-    if parsed:
-        context["app_log_parsed"] = parsed
-
-    # 尾部原文：保留最后 200 行用于崩溃现场回溯
-    tail_lines = lines[-APP_LOG_TAIL_LINES:]
-    context["app_log_tail"] = tail_lines
-
-    # 尾部单独检测崩溃信号（不依赖前 500 行）
-    tail_text = "\n".join(tail_lines)
-    fatal = _extract_fatal_signal(tail_text)
-    if fatal:
-        context["app_log_fatal_signal"] = fatal
-
-
-def parse_gdb_context(pid, context, log_path=None):
-    """
-    解析 GDB 上下文
-    """
-    if not log_path:
-        context["app_log_status"] = "no_path_provided"
-        return
-    
-    steps = [
-        (extract_proc_info, (pid, context)),
-        (extract_dpdk_hugepage, (context,)),
-        (extract_cpu_topology, (context,)),
-        (extract_nic_status, (context,)),
-        (extract_app_log, (log_path, context)),
-    ]
-
-    for fn, args in steps:
-        try:
-            fn(*args)
-        except Exception as exc:
-            context.setdefault("errors", []).append({
-                "step":  fn.__name__,
-                "type":  type(exc).__name__,
-                "error": str(exc),
-            })
-
-    return context
-
-_DPDK_USERSPACE_DRIVERS = {"vfio-pci", "uio_pci_generic", "igb_uio"}
 
 
 def build_core_info_for_prompt(
@@ -347,22 +313,19 @@ def build_core_info_for_prompt(
     """
     is_truncated = call_chain_llm.get("analysis_mode") == "env_diagnostic"
 
-    # ── 设备绑定：只传异常项，正常时明确置 None ──
     nic_status = context.get("nic_status", {})
     network_devs = nic_status.get("network", []) if isinstance(nic_status, dict) else []
     app_log = context.get("app_log_parsed", {})
-    probed_devices = {
-        p["device"] for p in app_log.get("pci_probes", [])
-    }  # 例如 {"0000:00:08.0"}
+    probed_devices = {p["device"] for p in app_log.get("pci_probes", [])}
 
     device_issues = [
         {"slot": d["pci"], "driver": d["drv"], "msg": "使用内核驱动，无法被 DPDK 接管"}
         for d in network_devs
         if d.get("drv")
         and d["drv"] not in _DPDK_USERSPACE_DRIVERS
-        and d["pci"] in probed_devices  # ← 只看 DPDK 真正尝试用的设备
+        and d["pci"] in probed_devices
     ]
-    # ── Hugepage ──
+
     hp_2m = context.get("hugepages", {}).get("hugepages_2M", {})
     try:
         total = int(hp_2m.get("total", 0))
@@ -373,21 +336,63 @@ def build_core_info_for_prompt(
     except (ValueError, TypeError):
         hugepage_usage = "未知"
 
-    # ── EAL 内部线程二次过滤兜底 ──
-    _EAL_INTERNAL_FUNCS = {"mp_handle", "eal_intr_handle_events", "rte_ctrl_thread_create"}
-    
     raw_abnormal = call_chain_llm.get("abnormal_threads", [])
     filtered_abnormal = [
         t for t in raw_abnormal
         if not any(f in t.get("bt_top", "") for f in _EAL_INTERNAL_FUNCS)
     ]
 
-    # ── 把 call_chain_llm 的字段直接透传，补充 context 衍生字段 ──
+    # 从 raw_meta 中补充 crash_locals 和 crash_type（call_chain_llm 不含这些字段）
+    gdb_output = raw_meta.get("parsed_gdb_output", {})
+    crash_locals: dict = gdb_output.get("crash_locals", {})
+    crash_type: str = gdb_output.get("crash_type", "")
+
+    # 裁剪 crash_locals：仅保留标量或短值，避免 leak 数组撑爆 prompt
+    _MAX_LOCAL_VAL_LEN = 120
+    trimmed_locals = {
+        k: (v if len(str(v)) <= _MAX_LOCAL_VAL_LEN else str(v)[:_MAX_LOCAL_VAL_LEN] + "…")
+        for k, v in crash_locals.items()
+        if k != "leak"  # leak 数组体积太大，对诊断无增量价值
+    }
+
     return {
-        **call_chain_llm,  # 包含 analysis_mode / backtrace_quality / crash_function 等
+        **call_chain_llm,
         "is_truncated": is_truncated,
         "device_binding_issues": device_issues or None,
         "hugepage_usage": hugepage_usage,
         "abnormal_threads": filtered_abnormal,
-        # 异常线程从 call_chain_llm 已有，不重复提取
+        "crash_type": crash_type,
+        "crash_locals": trimmed_locals or None,
     }
+
+
+# ── Backward-compatible free functions ────────────────────────────────────
+
+_default_collector = SystemContextCollector()
+
+
+def parse_gdb_context(pid, context, log_path=None):
+    """旧接口兼容：将采集结果合并到调用方传入的 context dict 中并返回。"""
+    collected = _default_collector.collect(pid, log_path)
+    context.update(collected)
+    return context
+
+
+def extract_proc_info(pid, context):
+    _default_collector._collect_proc_info(context, pid)
+
+
+def extract_dpdk_hugepage(context):
+    _default_collector._collect_hugepage(context)
+
+
+def extract_cpu_topology(context):
+    _default_collector._collect_cpu_topology(context)
+
+
+def extract_nic_status(context):
+    _default_collector._collect_nic_status(context)
+
+
+def extract_app_log(log_path: str, context: dict) -> None:
+    _default_collector._collect_app_log(context, log_path)

@@ -3,7 +3,11 @@ from server.repository.case_repository import get_all_case
 from server.service.client_service import is_client_alive
 from tools.common_utils import format_datetime
 from agent.output.report_formatter import _get
-from agent.tools.call_chain_tool import build_graph_spec_tool, build_timeline_spec_tool
+from agent.tools.call_chain_tool import (
+    build_crash_snapshot_tool,
+    build_graph_spec_tool,
+    build_timeline_spec_tool,
+)
 from agent.tools.telemetry_feature_tool import log_1s_statistic, log_5s_statistic
 from server.repository.client_redis import (
     get_client_running_instances,
@@ -89,10 +93,13 @@ def dashboard_render_report_service(client_id, pid, timestamp):
     redis_core_info = get_dpdk_core_info(client_id, pid, timestamp)
 
     crash_timestamp = redis_core_info["core_timestamp"]
-    call_chain_graph = redis_core_info["meta"]["parsed_gdb_output"]["call_chain_graph"]
+    meta = redis_core_info["meta"]
+    gdb_output = meta["parsed_gdb_output"]
+    call_chain_graph = gdb_output["call_chain_graph"]
 
     graph_spec = build_graph_spec_tool(call_chain_graph)
     timeline_spec = build_timeline_spec_tool(call_chain_graph)
+    crash_snapshot = build_crash_snapshot_tool(call_chain_graph, gdb_output, meta)
 
     return {
         "crash_time": datetime.datetime.fromtimestamp(crash_timestamp).strftime(
@@ -104,6 +111,7 @@ def dashboard_render_report_service(client_id, pid, timestamp):
         "total_time": core_info["total_time"],
         "graph_spec": graph_spec,
         "timeline_spec": timeline_spec,
+        "crash_snapshot": crash_snapshot,
     }
 
 

@@ -5,7 +5,6 @@ from agent.config.llm_factory import get_embedding
 from agent.config.settings import get_settings
 from server.service.case_service import search_cases_es_pg
 
-
 BASE_DIR = Path(__file__).parent
 
 
@@ -22,7 +21,7 @@ class Retrieval:
 
         fused_results = search_cases_es_pg(
             query=description,
-            bucket="vs_dpdk_case_lib",
+            bucket="dpdk_case_lib",
             index_name="dumpsight_cases",
             top_k=5,
         )

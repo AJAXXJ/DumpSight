@@ -35,7 +35,7 @@ def render_case_embedding_text(case):
     return "\n\n".join(parts)
 
 
-def save_case_to_vs(case, bucket="vs_dpdk_case_lib"):
+def save_case_to_vs(case, bucket="dpdk_case_lib"):
     """
     单条案例直接写入向量库
     """
@@ -61,6 +61,7 @@ def save_case_to_vs(case, bucket="vs_dpdk_case_lib"):
             "crash_function": case.get("crash_function"),
             "anomaly_flags": case.get("anomaly_flags", []),
             "root_cause": case.get("root_cause"),
+            "description": case.get("description"),
             "repair_steps": case.get("repair_steps"),
             "created_at": int(time.time()),
         },
@@ -77,7 +78,7 @@ def save_case_to_vs(case, bucket="vs_dpdk_case_lib"):
 
 def search_cases(
     query,
-    bucket="vs_dpdk_case_lib",
+    bucket="dpdk_case_lib",
     top_k=5,
 ):
     """
@@ -88,10 +89,12 @@ def search_cases(
 
     # query embedding
     query_vector = embed_query(query)
+    # print("查询向量长度:", len(query_vector))
 
     # 向量检索
     vs = get_vector_store(bucket, current_app.config["VECTOR_DIM"])
     raw = vs.search(query_vector, top_k=top_k)
+    # print("检索结果条数:", len(raw))
 
     # 展开 metadata，拼装返回结构
     results = []
@@ -229,7 +232,7 @@ def rrf_fusion(result_lists, k=60, alpha=0.7, beta=0.3):
 
 
 def search_cases_es_pg(
-    query, bucket="vs_dpdk_case_lib", index_name="dumpsight_cases", top_k=5
+    query, bucket="dpdk_case_lib", index_name="dumpsight_cases", top_k=5
 ):
     """
     ES + PGVector + RRF 融合检索
@@ -242,14 +245,6 @@ def search_cases_es_pg(
     es_results = es_search(query, index_name=index_name, top_k=top_k)
 
     pg_results = search_cases(query, bucket=bucket, top_k=top_k)
-
-    # print("内部检索结果数量: ES={}, PG={}".format(len(es_results), len(pg_results)))
-    # print("ES结果:")
-    # for r in es_results:
-    #     print(r)
-    # print("PG结果:")
-    # for r in pg_results:
-    #     print(r)
 
     # RRF 融合
     # fused = rrf_fusion([es_results, pg_results])
@@ -281,6 +276,7 @@ def case_insert_service(case: dict):
         "root_cause": case.get("root_cause"),
         "log_feature": case.get("log_feature"),
         "anomaly_flags": case.get("anomaly_flags", []),
+        "repair_steps": case.get("repair_steps"),
     }
 
     # 写 ES
@@ -411,3 +407,41 @@ def clear_case_library():
         vs.delete(case_id)
 
     print(f"已清空 {len(all_cases)} 条案例库")
+
+
+def recall_search_cases_es_pg(
+    query,
+    group_truth_ids,
+    bucket="dpdk_case_lib",
+    index_name="dumpsight_cases",
+    top_k=5,
+    top_k_es=5,
+    top_k_pg=5,
+    rrf_k=60,
+    alpha=0,
+    beta=1,
+):
+    """
+    ES + PGVector + RRF 融合检索
+    """
+
+    if not query.strip():
+        raise ValueError("查询文本不能为空")
+
+    # 双路检索
+    es_results = es_search(query, index_name=index_name, top_k=top_k_es)
+
+    pg_results = search_cases(query, bucket=bucket, top_k=top_k_pg)
+
+    es_ids = [r["case_id"] for r in es_results]
+    pg_ids = [r["case_id"] for r in pg_results]
+
+    # RRF 融合
+    # fused = rrf_fusion([es_results, pg_results])
+    fused = rrf_fusion([es_results, pg_results], k=rrf_k, alpha=alpha, beta=beta)
+
+    fused_ids = [r["case_id"] for r in fused]
+
+    return es_ids, pg_ids, fused_ids[:top_k]
+
+

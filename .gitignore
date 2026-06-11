@@ -3,5 +3,5 @@ build/
 dist/
 dumpsight.spec
 config.yaml
-
+.claude/
 DumpSight_running.log

@@ -12,7 +12,7 @@ DPDK 信息：
 {% if core_info %}
 ## 崩溃分析数据
 
-{% if core_info.analysis_mode == "env_diagnostic" %}
+{% if core_info.get("analysis_mode") == "env_diagnostic" %}
 ### ⚠ Backtrace 不可用
 {{ core_info.backtrace_warning }}
 复现建议: {{ core_info.rerun_suggestion }}
